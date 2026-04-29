@@ -1,0 +1,3381 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Hex Border Game Prototype Fix 10</title>
+<style>
+  :root{
+    --bg:#f5f5f5; --panel:rgba(255,255,255,0.82); --ink:#111;
+    --red:#d62828; --green:#1f7a34; --blue:#3b82f6; --gray:#9a9a9a;
+    --hidden:#444; --sel:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
+  .app{
+    width:min(100vw,560px); height:100svh; margin:0 auto; padding:3px;
+    display:grid; grid-template-rows:48px 60px 1fr 116px 38px; gap:3px;
+  }
+  .topbar,.status,.poolWrap,.boardWrap,.deckWrap,.handPanel{
+    background:var(--panel);
+    border-radius:14px;
+    backdrop-filter:blur(2px);
+    box-shadow:0 1px 8px rgba(0,0,0,0.08);
+  }
+  .topbar{display:grid; grid-template-columns:minmax(96px,1fr) auto auto auto auto; gap:2px; align-items:center; padding:6px 6px}
+  .meta{font-size:12px; line-height:1.12; min-width:0; overflow:visible; font-weight:900}
+  .meta div{white-space:nowrap; overflow:visible; text-overflow:clip; max-width:none}
+  button{border:none; border-radius:10px; background:#111; color:#fff; font-weight:700; padding:7px 7px; font-size:12px}
+  button:disabled{opacity:0.35}
+  .navBtn{min-width:27px; padding:7px 5px; font-size:14px; border-radius:0}
+  .navCluster{display:flex; gap:0; align-items:center; border-radius:10px; overflow:hidden}
+  .navCluster .navBtn{border-right:1px solid rgba(255,255,255,0.25)}
+  .navCluster .navBtn:last-child{border-right:none}
+  .speedSelect{font-size:10px; font-weight:800; padding:6px 2px; border-radius:9px; max-width:66px}
+  .dataBtn{font-size:10px; padding:7px 5px; border-radius:9px; font-weight:900}
+  .newBtn{font-size:10px; padding:7px 5px; min-width:38px; border-radius:9px; font-weight:900}
+  button.secondary{background:#ddd; color:#111}
+  .toprow{position:relative; height:66px; margin-left:-6px; width:calc(100% + 6px); overflow:visible}
+  .deckWrap{position:absolute; left:0; top:0; height:66px; display:flex; align-items:center; justify-content:flex-start; padding-left:2px; padding-bottom:4px; overflow:visible}
+  .poolWrap{position:absolute; left:50%; transform:translateX(-50%); top:6px; height:52px; padding:0; display:flex; align-items:center; justify-content:center; gap:2px}
+  .nextTurnWrap{position:absolute; right:2px; top:10px; display:flex; align-items:center; justify-content:center}
+  #nextTurnBtn{font-size:10px; padding:8px 7px; min-width:58px; border-radius:10px}
+  /* MOIRE_OUTSIDE_BOARD_BG
+     Purple/orange moiré-inspired field for the empty space outside the hex board.
+     Original CSS pattern, not copied from the reference image.
+  */
+  .boardWrap{
+    padding:0;
+    overflow:hidden;
+    margin-left:-8px;
+    width:calc(100% + 8px);
+    background-color:#f3e8ff;
+    background-image:
+      repeating-radial-gradient(ellipse at 18% 22%,
+        rgba(113,38,184,0.58) 0 1.35px,
+        rgba(255,255,255,0) 1.35px 6.4px),
+      repeating-radial-gradient(ellipse at 82% 72%,
+        rgba(255,116,24,0.54) 0 1.15px,
+        rgba(255,255,255,0) 1.15px 6.1px),
+      repeating-linear-gradient(58deg,
+        rgba(106,41,180,0.34) 0 1.15px,
+        rgba(255,255,255,0) 1.15px 7.6px),
+      repeating-linear-gradient(121deg,
+        rgba(255,136,22,0.32) 0 1.05px,
+        rgba(255,255,255,0) 1.05px 7.1px),
+      radial-gradient(circle at 50% 42%,
+        rgba(255,255,255,0.38) 0 36%,
+        rgba(255,231,205,0.35) 54%,
+        rgba(219,191,255,0.56) 100%);
+    background-blend-mode:multiply,multiply,normal,normal,normal;
+  }
+  #board{
+    width:100%;
+    height:100%;
+    display:block;
+    background-color:transparent;
+    background-image:
+      repeating-radial-gradient(ellipse at 20% 22%,
+        rgba(126,50,196,0.38) 0 1.1px,
+        rgba(255,255,255,0) 1.1px 6.2px),
+      repeating-radial-gradient(ellipse at 78% 70%,
+        rgba(255,132,38,0.34) 0 1.05px,
+        rgba(255,255,255,0) 1.05px 6px);
+    background-blend-mode:multiply;
+  }
+  .hands{
+    display:grid; grid-template-columns:110px 110px 110px; justify-content:space-between; gap:0; align-items:end; margin-left:0; width:100%
+  }
+  .handPanel{
+    padding:0;
+    display:block;
+    width:110px;
+    height:108px;
+    min-width:110px;
+    min-height:108px;
+    overflow:visible;
+    justify-self:center;
+    align-self:end;
+    position:relative;
+  }
+  .redPanel{border:3px solid var(--red)}
+  .bluePanel{border:3px solid var(--blue)}
+  .greenPanel{border:3px solid var(--green)}
+  .handPanel.activeTurn{
+    border-width:3px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.65) inset,
+      0 0 9px var(--active-glow),
+      0 0 18px var(--active-glow),
+      0 1px 8px rgba(0,0,0,0.08);
+  }
+  .redPanel.activeTurn{--active-glow:#ff1744; border-color:#ff1744}
+  .bluePanel.activeTurn{--active-glow:#00b7ff; border-color:#00b7ff}
+  .greenPanel.activeTurn{--active-glow:#39ff14; border-color:#39ff14}
+  .aiLevelBadge{
+    position:absolute;
+    top:-18px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:20;
+    height:22px;
+    max-width:102px;
+    border-radius:9px;
+    background:rgba(255,255,255,0.94);
+    color:#fff;
+    font-size:9px;
+    font-weight:900;
+    padding:0 4px;
+    text-align:center;
+    box-shadow:0 1px 4px rgba(0,0,0,0.18);
+  }
+  .redBadge{color:#fff; background:var(--red); border:2px solid var(--red)}
+  .blueBadge{color:#fff; background:var(--blue); border:2px solid var(--blue)}
+  .greenBadge{color:#fff; background:var(--green); border:2px solid var(--green)}
+  .aiLevelBadge option{background:#fff; color:#111}
+  .slotGlow{}
+  .aiFlash{}
+  .aiPlaced{}
+  @keyframes moveGlowPulse{
+    0%{filter:drop-shadow(0 0 2px var(--move-glow)); opacity:0.82}
+    38%{filter:drop-shadow(0 0 7px var(--move-glow)) drop-shadow(0 0 15px var(--move-glow)); opacity:1}
+    100%{filter:drop-shadow(0 0 2px var(--move-glow)); opacity:0.88}
+  }
+  .moveGlow{
+    animation:moveGlowPulse 720ms ease-in-out both;
+  }
+  .tileSvg{width:52px;height:56px;display:block;overflow:visible;margin-top:0;margin-bottom:0}
+  .poolTileSvg{width:44px;height:48px;display:block;overflow:visible}
+  .handTileSvg{width:68px;height:72px;display:block;overflow:visible}
+  .handClusterSvg{width:100%;height:100%;display:block;overflow:visible}
+  .deckSvg{width:96px;height:98px;display:block;overflow:visible}
+  .status{padding:6px 8px; font-size:11px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:clip; position:relative}
+
+  .scrollText{
+    display:inline-block;
+    white-space:nowrap;
+    min-width:max-content;
+  }
+  .scrollText.scrolling{
+    animation:textScroll 9s linear infinite alternate;
+  }
+  @keyframes textScroll{
+    0%,12%{transform:translateX(0)}
+    88%,100%{transform:translateX(var(--scroll-distance, -120px))}
+  }
+
+  .scorePopupArea{
+    position:absolute;
+    right:10px;
+    top:76px;
+    width:124px;
+    height:38px;
+    pointer-events:none;
+    text-align:center;
+    z-index:18;
+  }
+  .scorePopup{
+    display:block;
+    font-size:28px;
+    font-weight:1000;
+    line-height:1;
+    text-shadow:
+      0 0 4px rgba(255,255,255,1),
+      0 0 9px rgba(255,255,255,0.92);
+    animation:scorePop 1050ms ease-out forwards;
+  }
+  @keyframes scorePop{
+    0%{opacity:0; transform:translateY(8px) scale(0.72)}
+    18%{opacity:1; transform:translateY(0) scale(1.15)}
+    76%{opacity:1; transform:translateY(-8px) scale(1)}
+    100%{opacity:0; transform:translateY(-15px) scale(0.96)}
+  }
+  @keyframes scoreTilePulse{
+    0%{opacity:0; stroke-width:2}
+    20%{opacity:1; stroke-width:5}
+    75%{opacity:1; stroke-width:4}
+    100%{opacity:0; stroke-width:2}
+  }
+  .scoreTileFlash{
+    animation:scoreTilePulse 1050ms ease-out forwards;
+    pointer-events:none;
+  }
+  .overlay{position:fixed; inset:0; display:none; align-items:center; justify-content:center; pointer-events:none; z-index:5}
+  .overlay.show{display:flex}
+  .bigx{font-size:min(44vw,240px); font-weight:900; color:#d62828; line-height:1; text-shadow:0 0 14px rgba(255,255,255,0.85)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="meta">
+      <div id="playerTurnLabel"></div>
+      <div id="turnNumberLabel"></div>
+    </div>
+    <div class="navCluster">
+      <button id="undoBtn" class="navBtn" title="Undo">↶</button>
+      <button id="pauseBtn" class="navBtn" title="Pause/Resume AI">⏸</button>
+      <button id="redoBtn" class="navBtn" title="Redo">↷</button>
+    </div>
+    <select id="speedSelect" class="speedSelect" title="AI speed">
+      <option value="Slow">Slow</option>
+      <option value="Normal">Normal</option>
+      <option value="Fast">Fast</option>
+      <option value="Very Fast">Very Fast</option>
+      <option value="Max">Max</option>
+    </select>
+    <button id="exportDataBtn" class="dataBtn" title="Export training data">DATA</button>
+    <button id="newGameBtn" class="newBtn">NEW</button>
+  </div>
+
+  <div class="toprow">
+    <div class="deckWrap"><svg id="deckSvg" class="deckSvg" viewBox="0 0 84 88"></svg></div>
+    <div id="poolWrap" class="poolWrap"></div>
+    <div class="nextTurnWrap"><button id="nextTurnBtn">NEXT<br>TURN</button></div>
+    <div id="scorePopupArea" class="scorePopupArea"></div>
+  </div>
+
+  <div class="boardWrap"><svg id="board" viewBox="-170 -166 340 330" preserveAspectRatio="xMidYMin meet"></svg></div>
+
+  <div class="hands">
+    <div id="bluePanel" class="handPanel bluePanel"></div>
+    <div id="redPanel" class="handPanel redPanel"></div>
+    <div id="greenPanel" class="handPanel greenPanel"></div>
+  </div>
+
+  <div id="status" class="status"></div>
+</div>
+
+<div id="illegalOverlay" class="overlay"><div class="bigx">✕</div></div>
+
+<script>
+const COLORS = {red:"#d62828",green:"#1f7a34",blue:"#3b82f6",gray:"#9a9a9a",black:"#111111",hidden:"#444444",sel:"#f59e0b"};
+const PLAYERS=["red","green","blue"];
+const NEIGHBORS=[[1,-1],[0,-1],[-1,0],[-1,1],[0,1],[1,0]];
+
+function sharedSideIndex(q1,r1,q2,r2){
+  const [x1,y1] = axialToXY(q1,r1,1);
+  const [x2,y2] = axialToXY(q2,r2,1);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const sideAngles = [30,90,150,210,270,330];
+  let bestIdx = 0;
+  let bestDot = -Infinity;
+  for(let i=0;i<6;i++){
+    const a = Math.PI * sideAngles[i] / 180;
+    const vx = Math.cos(a);
+    const vy = Math.sin(a);
+    const dot = dx*vx + dy*vy;
+    if(dot > bestDot){
+      bestDot = dot;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+const BOARD_RADIUS=4;
+const TILE_SIZE=19;
+const BOARD_HEX_SIZE=21.2;
+
+function makeSolid(c){ return {kind:"solid", sides:[c,c,c,c,c,c]}; }
+function makeBicolor(a,b){ return {kind:"bicolor", sides:[a,a,a,b,b,b]}; }
+function makeTricolor(a,b,c){ return {kind:"tricolor", sides:[a,a,b,b,c,c]}; }
+
+function shuffleDeck(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+function buildDeck(){
+  const arr=[]; const base=["red","green","blue","gray","black"];
+  const choose=(list,k,start,prefix,out)=>{ if(prefix.length===k){out.push(prefix.slice()); return;} for(let i=start;i<list.length;i++){ prefix.push(list[i]); choose(list,k,i+1,prefix,out); prefix.pop(); } };
+
+  // 5 solid types x 6 copies = 30
+  base.forEach(c=>{ for(let i=0;i<6;i++) arr.push(makeSolid(c)); });
+
+  // 10 bicolor types x 4 copies = 40
+  const bi=[]; choose(base,2,0,[],bi);
+  bi.forEach(([a,b])=>{ for(let i=0;i<4;i++) arr.push(makeBicolor(a,b)); });
+
+  // Expanded tricolors: multisets of 3 color sections from 5 colors, excluding solids.
+  // 30 tricolor types x 3 copies = 90
+  const tri=[];
+  for(let i=0;i<base.length;i++){
+    for(let j=i;j<base.length;j++){
+      for(let k=j;k<base.length;k++){
+        if(base[i]===base[j] && base[j]===base[k]) continue; // solid, not tricolor
+        tri.push([base[i],base[j],base[k]]);
+      }
+    }
+  }
+  tri.forEach(([a,b,c])=>{ for(let i=0;i<3;i++) arr.push(makeTricolor(a,b,c)); });
+
+  // Total: 160 tiles, 45 unique tile types.
+  return shuffleDeck(arr);
+}
+function createState(){
+  return {
+    gameId:makeGameId(),
+    turnIndex:0,
+    turnNumber:1,
+    trainingMoveNumber:0,
+    trainingResultRecorded:false,
+    selected:null,
+    board:{"0,0":{tile:makeSolid("gray")}},
+    pool:[null,null,null],
+    hands:{
+      red:[Object.assign(makeSolid("red"), {starter:true, owner:"red"}),null,null],
+      green:[Object.assign(makeSolid("green"), {starter:true, owner:"green"}),null,null],
+      blue:[Object.assign(makeSolid("blue"), {starter:true, owner:"blue"}),null,null]
+    },
+    openingPlaced:{red:false, green:false, blue:false},
+    openingBoardPlacementsThisTurn:{red:0, green:0, blue:0},
+    slotGlow:{red:null, green:null, blue:null},
+    aiLevel:{red:"Human", blue:"Expert", green:"Expert"},
+    simSpeed:"Normal",
+    paused:false,
+    aiFlash:null,
+    moveFlash:null,
+    scoreFlash:[],
+    scoreFlashTiles:[],
+    scoreFlashId:0,
+    placementsThisTurn:0,
+    firstPlacedSource:null,
+    lastPlaced:null,
+    deckDumpRunActive:false,
+    deckDumpsThisTurn:0,
+    deckDumpLimitThisTurn:0,
+    winner:null,
+    gameOver:false,
+    deck:buildDeck()
+  };
+}
+let state=createState();
+let historyStack=[];
+let redoStack=[];
+let aiRunToken=0;
+let aiRunning=false;
+let pendingEndTurnTimer=null;
+let scorePopupRenderedId=0;
+
+function currentPlayer(){ return PLAYERS[state.turnIndex]; }
+function currentRoundNumber(){
+  return Math.floor(((state.turnNumber || 1)-1) / PLAYERS.length) + 1;
+}
+function advanceTurn(){
+  normalizeTurnState();
+  state.turnIndex=(state.turnIndex+1)%PLAYERS.length;
+  state.turnNumber=(state.turnNumber || 1)+1;
+}
+function normalizeTurnState(){
+  if(!Number.isInteger(state.turnIndex) || state.turnIndex<0 || state.turnIndex>=PLAYERS.length) state.turnIndex=0;
+  if(!Number.isInteger(state.turnNumber) || state.turnNumber<1) state.turnNumber=1;
+}
+function cancelPendingEndTurn(){
+  if(pendingEndTurnTimer!==null){
+    clearTimeout(pendingEndTurnTimer);
+    pendingEndTurnTimer=null;
+  }
+}
+function scheduleEndTurn(ms=120){
+  cancelPendingEndTurn();
+  const token=aiRunToken;
+  pendingEndTurnTimer=setTimeout(()=>{
+    pendingEndTurnTimer=null;
+    if(token!==aiRunToken) return;
+    if(!state.gameOver && !state.winner) endTurn();
+  }, ms);
+}
+
+
+function makeAILevelBadge(player){
+  const sel=document.createElement("select");
+  sel.className=`aiLevelBadge ${player}Badge`;
+
+  const levels = player==="red"
+    ? ["Human","Beginner","Intermediate","Expert","Pro"]
+    : ["Beginner","Intermediate","Expert","Pro"];
+
+  levels.forEach(level=>{
+    const opt=document.createElement("option");
+    opt.value=level;
+    opt.textContent=level;
+    sel.appendChild(opt);
+  });
+
+  if(!state.aiLevel) state.aiLevel={red:"Human", blue:"Expert", green:"Expert"};
+  sel.value=state.aiLevel[player] || (player==="red" ? "Human" : "Expert");
+
+  sel.addEventListener("click", e=>e.stopPropagation());
+  sel.addEventListener("pointerdown", e=>e.stopPropagation());
+  sel.addEventListener("change", e=>{
+    if(!state.aiLevel) state.aiLevel={red:"Human", blue:"Expert", green:"Expert"};
+    state.aiLevel[player]=e.target.value;
+    commitHistory();
+    renderAll();
+    setStatus(`${cap(player)} set to ${e.target.value}.`);
+    maybeAutoRunAI();
+  });
+  return sel;
+}
+
+function isCenterVoid(q,r){ return q===0 && r===0; }
+function isCenterRingProtectedSpace(q,r){
+  if(isCenterVoid(q,r)) return false;
+  const s=-q-r;
+  return Math.max(Math.abs(q),Math.abs(r),Math.abs(s))===1;
+}
+function isAdjacentToSeededStarterTile(q,r){
+  for(const [dq,dr] of NEIGHBORS){
+    const neighbor=state.board[`${q+dq},${r+dr}`];
+    if(neighbor && isSeededStarterTile(neighbor.tile)) return true;
+  }
+  return false;
+}
+function isProtectedOverwriteSpace(q,r){
+  return isCenterRingProtectedSpace(q,r) || isAdjacentToSeededStarterTile(q,r);
+}
+
+function isPlayerHuman(player){
+  return player==="red" && (!state.aiLevel || state.aiLevel.red==="Human");
+}
+function isCurrentPlayerHuman(){
+  return isPlayerHuman(currentPlayer());
+}
+function aiDelayMs(ms){
+  const speed=(state.simSpeed || "Normal");
+  const mult = speed==="Slow" ? 1.5 : speed==="Normal" ? 1 : speed==="Fast" ? 0.35 : speed==="Very Fast" ? 0.12 : 0.02;
+  return Math.max(speed==="Max" ? 1 : 20, Math.round(ms*mult));
+}
+function maybeAutoRunAI(){
+  if(!state.gameOver && !state.winner && !state.paused && !isCurrentPlayerHuman() && !aiRunning){
+    setTimeout(()=>{ if(!aiRunning && !state.paused) runAI(); }, 30);
+  }
+}
+function setSimSpeed(value){
+  state.simSpeed=value;
+  const sel=document.getElementById("speedSelect");
+  if(sel) sel.value=value;
+}
+function updatePauseButton(){
+  const btn=document.getElementById("pauseBtn");
+  if(!btn) return;
+  btn.textContent = state.paused ? "▶" : "⏸";
+  btn.title = state.paused ? "Resume AI" : "Pause AI";
+}
+function togglePause(){
+  cancelPendingEndTurn();
+  state.paused=!state.paused;
+  aiRunToken++;
+  aiRunning=false;
+  renderAll();
+  setStatus(state.paused ? "Paused." : "Resumed.");
+  if(!state.paused) maybeAutoRunAI();
+}
+
+
+function canUseNextTurn(){
+  if(!isCurrentPlayerHuman() || state.gameOver || state.winner) return false;
+  if(state.selected) return false;
+  // Main purpose: after placing 1 or 2 hand tiles, let Red stop and keep the remaining hand tile(s).
+  if(state.placementsThisTurn>0 && state.firstPlacedSource==="hand") return true;
+  // Also allow after any completed placement before auto-advance, as a manual end-turn control.
+  if(state.placementsThisTurn>0) return true;
+  return false;
+}
+function nextTurnNow(){
+  cancelPendingEndTurn();
+  if(!canUseNextTurn()){
+    setStatus("NEXT TURN is available after you place a tile.");
+    return;
+  }
+  setStatus("Ending turn. Remaining hand tiles stay in your hand.");
+  endTurn();
+}
+
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function axialToXY(q,r,s){ return [1.5*q*s, Math.sqrt(3)*(r+q/2)*s]; }
+function hexPoints(x,y,s){ const pts=[]; for(const a of [0,60,120,180,240,300]){ const rad=Math.PI*a/180; pts.push((x+s*Math.cos(rad))+","+(y+s*Math.sin(rad))); } return pts.join(" "); }
+function svgel(name,attrs={}){ const e=document.createElementNS("http://www.w3.org/2000/svg",name); for(const [k,v] of Object.entries(attrs)) e.setAttribute(k,v); return e; }
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+
+const TRAINING_STORAGE_KEY="hexTileStrategyTraining_v1";
+const TRAINING_MAX_MOVES=5000;
+const TRAINING_MAX_GAMES=500;
+
+function makeGameId(){
+  return "g" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8);
+}
+
+function trainingStore(){
+  try{
+    const raw=localStorage.getItem(TRAINING_STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {version:1, createdAt:new Date().toISOString(), moves:[], games:[]};
+}
+
+function saveTrainingStore(store){
+  try{
+    if(store.moves.length>TRAINING_MAX_MOVES) store.moves=store.moves.slice(store.moves.length-TRAINING_MAX_MOVES);
+    if(store.games.length>TRAINING_MAX_GAMES) store.games=store.games.slice(store.games.length-TRAINING_MAX_GAMES);
+    store.updatedAt=new Date().toISOString();
+    localStorage.setItem(TRAINING_STORAGE_KEY, JSON.stringify(store));
+  }catch(e){
+    console.warn("Training data save failed", e);
+  }
+}
+
+function compactTile(tile){
+  if(!tile) return null;
+  return {
+    kind:tile.kind,
+    sides:tile.sides ? tile.sides.slice() : [],
+    starter:!!tile.starter,
+    owner:tile.owner || null
+  };
+}
+
+function compactBoard(){
+  const out={};
+  for(const key of Object.keys(state.board)){
+    if(key==="0,0") continue;
+    out[key]=compactTile(state.board[key].tile);
+  }
+  return out;
+}
+
+function compactHands(){
+  return {
+    red:state.hands.red.map(compactTile),
+    green:state.hands.green.map(compactTile),
+    blue:state.hands.blue.map(compactTile)
+  };
+}
+
+function compactPool(){
+  return state.pool.map(compactTile);
+}
+
+function compactScores(){
+  return {
+    red:totalScoreForPlayer("red"),
+    green:totalScoreForPlayer("green"),
+    blue:totalScoreForPlayer("blue")
+  };
+}
+
+function compactGameState(){
+  return {
+    gameId:state.gameId,
+    turnNumber:state.turnNumber,
+    roundNumber:currentRoundNumber(),
+    currentPlayer:currentPlayer(),
+    aiLevel:clone(state.aiLevel || {}),
+    simSpeed:state.simSpeed || "Normal",
+    scores:compactScores(),
+    pool:compactPool(),
+    hands:compactHands(),
+    board:compactBoard(),
+    deckRemaining:state.deck.length
+  };
+}
+
+function recordTrainingMove(details){
+  try{
+    const store=trainingStore();
+    const player=details.player || currentPlayer();
+    const scoresBefore=details.scoresBefore || null;
+    const scoresAfter=details.scoresAfter || compactScores();
+    const scoreDelta=scoresBefore ? {
+      red:scoresAfter.red-scoresBefore.red,
+      green:scoresAfter.green-scoresBefore.green,
+      blue:scoresAfter.blue-scoresBefore.blue
+    } : null;
+
+    state.trainingMoveNumber=(state.trainingMoveNumber||0)+1;
+
+    store.moves.push({
+      type:"move",
+      recordedAt:new Date().toISOString(),
+      gameId:state.gameId,
+      moveNumber:state.trainingMoveNumber,
+      turnNumber:state.turnNumber,
+      roundNumber:currentRoundNumber(),
+      player,
+      controller:isPlayerHuman(player) ? "Human" : "AI",
+      aiLevel:(state.aiLevel && state.aiLevel[player]) || null,
+      simSpeed:state.simSpeed || "Normal",
+      action:details.action,
+      source:details.source || null,
+      destination:details.destination || null,
+      handIndex:details.handIndex ?? null,
+      poolIndex:details.poolIndex ?? null,
+      q:details.q ?? null,
+      r:details.r ?? null,
+      tile:compactTile(details.tile),
+      overwrittenTile:compactTile(details.overwrittenTile),
+      scoresBefore,
+      scoresAfter,
+      scoreDelta,
+      stateAfter:compactGameState()
+    });
+    saveTrainingStore(store);
+  }catch(e){
+    console.warn("Training move record failed", e);
+  }
+}
+
+function recordTrainingGameResult(scores,winners){
+  if(state.trainingResultRecorded) return;
+  state.trainingResultRecorded=true;
+  const store=trainingStore();
+  store.games.push({
+    type:"gameResult",
+    recordedAt:new Date().toISOString(),
+    gameId:state.gameId,
+    turns:state.turnNumber,
+    rounds:currentRoundNumber(),
+    aiLevel:clone(state.aiLevel || {}),
+    simSpeed:state.simSpeed || "Normal",
+    winner:state.winner,
+    winners:winners || [],
+    scores:clone(scores),
+    deckRemaining:state.deck.length,
+    movesRecorded:state.trainingMoveNumber || 0
+  });
+  saveTrainingStore(store);
+}
+
+function exportTrainingData(){
+  const store=trainingStore();
+  const blob=new Blob([JSON.stringify(store,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=`hex_training_data_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  setStatus(`Exported ${store.moves.length} moves and ${store.games.length} game results.`);
+}
+
+function playerStrokeColor(player){ return COLORS[player] || COLORS.sel; }
+function playerMoveGlowColor(player){
+  if(player==="red") return "#ff2f6d";
+  if(player==="green") return "#39ff14";
+  if(player==="blue") return "#00b7ff";
+  return COLORS.sel;
+}
+function applyMoveGlow(el, player){
+  el.classList.add("moveGlow");
+  el.style.setProperty("--move-glow", playerMoveGlowColor(player));
+}
+function playerDarkColor(player){ return mixHexColor(COLORS[player] || "#000000", "#000000", 0.34); }
+function playerLightColor(player){ return mixHexColor(COLORS[player] || "#000000", "#ffffff", 0.42); }
+function playerHighlighterColor(player){
+  if(player==="red") return "#ff8fb3";
+  if(player==="green") return "#b7ff2a";
+  if(player==="blue") return "#00e5ff";
+  return playerLightColor(player);
+}
+function playerNearBlackGridColor(player){ return mixHexColor(COLORS[player] || "#000000", "#000000", 0.72); }
+function hexToRgb(hex){
+  const h=hex.replace("#","");
+  return {
+    r:parseInt(h.substring(0,2),16),
+    g:parseInt(h.substring(2,4),16),
+    b:parseInt(h.substring(4,6),16)
+  };
+}
+function rgbToHex(r,g,b){
+  const c=n=>Math.max(0,Math.min(255,Math.round(n))).toString(16).padStart(2,"0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+function lighterEdgeColor(color){ return mixHexColor(COLORS[color] || "#000000", "#ffffff", 0.22); }
+function mixHexColor(hex, mix, amount){
+  const a=hexToRgb(hex), b=hexToRgb(mix);
+  return rgbToHex(
+    a.r*(1-amount)+b.r*amount,
+    a.g*(1-amount)+b.g*amount,
+    a.b*(1-amount)+b.b*amount
+  );
+}
+function drawJewelTile(svg,tile,x,y,size,opt={}){
+  const g=svgel("g");
+  const selectedPlayer = opt.selectedPlayer || (opt.selected ? currentPlayer() : null);
+  const selStroke = selectedPlayer ? playerStrokeColor(selectedPlayer) : COLORS.sel;
+  const omitSides = new Set(opt.omitSides || []);
+  if(opt.click){ g.style.cursor="pointer"; g.addEventListener("click",opt.click); }
+
+  const base=COLORS[tile.owner] || COLORS[tile.sides[0]];
+  const light=mixHexColor(base,"#ffffff",0.52);
+  const mid=mixHexColor(base,"#ffffff",0.18);
+  const dark=mixHexColor(base,"#000000",0.25);
+  const deep=mixHexColor(base,"#000000",0.42);
+
+  const verts=[0,60,120,180,240,300].map(a=>{
+    const rad=Math.PI*a/180;
+    return [x+size*Math.cos(rad), y+size*Math.sin(rad)];
+  });
+
+  g.appendChild(svgel("polygon",{points:hexPoints(x,y,size),fill:base,stroke:"none"}));
+
+  const facetColors=[light,mid,dark,mid,light,deep];
+  for(let i=0;i<6;i++){
+    const p1=verts[i], p2=verts[(i+1)%6];
+    g.appendChild(svgel("polygon",{
+      points:`${x},${y} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`,
+      fill:facetColors[i],
+      opacity:"0.92",
+      stroke:"none"
+    }));
+  }
+
+  const inner=size*0.46;
+  g.appendChild(svgel("polygon",{
+    points:hexPoints(x,y,inner),
+    fill:mixHexColor(light,base,0.35),
+    opacity:"0.78",
+    stroke:"rgba(255,255,255,0.72)",
+    "stroke-width":"1.2"
+  }));
+
+  for(const p of verts){
+    g.appendChild(svgel("line",{
+      x1:x,y1:y,x2:p[0],y2:p[1],
+      stroke:"rgba(255,255,255,0.62)",
+      "stroke-width":"1.1",
+      "stroke-linecap":"round"
+    }));
+  }
+
+  // Colored outside edges; omit linked scoring sides so same-color captures look continuous.
+  for(let i=0;i<6;i++){
+    if(omitSides.has(i)) continue;
+    const p1=verts[i], p2=verts[(i+1)%6];
+    const edgeColor=tile.sides && tile.sides[i] ? tile.sides[i] : (tile.owner || "gray");
+    g.appendChild(svgel("line",{
+      x1:p1[0], y1:p1[1], x2:p2[0], y2:p2[1],
+      stroke:lighterEdgeColor(edgeColor),
+      "stroke-width":opt.selected?3:1.9,
+      "stroke-linecap":"round"
+    }));
+  }
+
+  if(opt.selected){
+    g.appendChild(svgel("polygon",{
+      points:hexPoints(x,y,size),
+      fill:"none",
+      stroke:selStroke,
+      "stroke-width":3
+    }));
+  }
+
+  svg.appendChild(g);
+}
+
+function snapshotState(){
+  const clean=clone(state);
+  clean.aiFlash=null;
+  clean.moveFlash=null;
+  return JSON.stringify(clean);
+}
+function updateHistoryButtons(){
+  const undo=document.getElementById("undoBtn");
+  const redo=document.getElementById("redoBtn");
+  if(undo) undo.disabled = historyStack.length<=1;
+  if(redo) redo.disabled = redoStack.length<=0;
+}
+function resetHistory(){
+  historyStack=[snapshotState()];
+  redoStack=[];
+  updateHistoryButtons();
+}
+function commitHistory(){
+  const snap=snapshotState();
+  if(historyStack.length===0 || historyStack[historyStack.length-1]!==snap){
+    historyStack.push(snap);
+    redoStack=[];
+  }
+  updateHistoryButtons();
+}
+function restoreSnapshot(snap, msg){
+  cancelPendingEndTurn();
+  aiRunToken++;
+  aiRunning=false;
+  state=JSON.parse(snap);
+  scorePopupRenderedId=state.scoreFlashId||0;
+  state.aiFlash=null;
+  state.moveFlash=null;
+  state.selected=null;
+  renderAll();
+  updateHistoryButtons();
+  setStatus(msg);
+}
+function undoMove(){
+  aiRunToken++;
+  aiRunning=false;
+  if(historyStack.length<=1){
+    setStatus("Nothing to undo.");
+    return;
+  }
+  const current=snapshotState();
+  const top=historyStack[historyStack.length-1];
+  if(current!==top){
+    redoStack.push(current);
+  } else {
+    redoStack.push(historyStack.pop());
+  }
+  const previous=historyStack[historyStack.length-1];
+  restoreSnapshot(previous, "Undid move.");
+}
+function redoMove(){
+  aiRunToken++;
+  aiRunning=false;
+  if(!redoStack.length){
+    setStatus("Nothing to redo.");
+    return;
+  }
+  const snap=redoStack.pop();
+  historyStack.push(snap);
+  restoreSnapshot(snap, "Redid move.");
+}
+
+
+function setScrollableText(el, msg){
+  el.innerHTML = "";
+  const span = document.createElement("span");
+  span.className = "scrollText";
+  span.textContent = msg;
+  el.appendChild(span);
+
+  requestAnimationFrame(()=>{
+    const overflow = span.scrollWidth - el.clientWidth;
+    if(overflow > 2){
+      span.classList.add("scrolling");
+      span.style.setProperty("--scroll-distance", `${-(overflow + 12)}px`);
+    } else {
+      span.classList.remove("scrolling");
+      span.style.removeProperty("--scroll-distance");
+    }
+  });
+}
+function setStatus(msg){ setScrollableText(document.getElementById("status"), msg); }
+function showIllegal(){ const ov=document.getElementById("illegalOverlay"); ov.classList.add("show"); setTimeout(()=>ov.classList.remove("show"),450); if(navigator.vibrate) navigator.vibrate(120); }
+function anyOpenHandSlot(player){ return state.hands[player].some(x=>x===null); }
+function anyOpenPoolSlot(){ return state.pool.some(x=>x===null); }
+function firstOpenPoolIndex(){
+  return state.pool.findIndex(x=>x===null);
+}
+function poolIsEmpty(){
+  return state.pool.every(x=>x===null);
+}
+function openPoolSlotCount(){
+  return state.pool.filter(x=>x===null).length;
+}
+function resetDeckDumpRun(){
+  state.deckDumpRunActive=false;
+  state.deckDumpsThisTurn=0;
+  state.deckDumpLimitThisTurn=0;
+}
+function ensureDeckDumpRunMayStart(){
+  // Corrected rule:
+  // A deck-dump run may start when the player has not yet placed this turn
+  // and the pool has at least one open slot.
+  // Dump limit equals the number of open pool slots at the moment the run starts.
+  // Examples:
+  // - empty pool: dump up to 3, then the 4th flipped deck card must be kept
+  // - 1 pool slot filled: dump up to 2, then the 3rd flipped deck card must be kept
+  // - 2 pool slots filled: dump up to 1, then the 2nd flipped deck card must be kept
+  if(!state.deckDumpRunActive && state.placementsThisTurn===0){
+    const limit=openPoolSlotCount();
+    if(limit>0){
+      state.deckDumpRunActive=true;
+      state.deckDumpsThisTurn=0;
+      state.deckDumpLimitThisTurn=limit;
+    }
+  }
+}
+function deckDumpRemaining(){
+  return Math.max(0,(state.deckDumpLimitThisTurn||0)-(state.deckDumpsThisTurn||0));
+}
+function canDumpSelectedDeckTileToPool(){
+  // Live rule check:
+  // If this is a deck card, a dump run is active, and the run still has remaining
+  // dump capacity, the card may go into any open pool slot.
+  // Do NOT rely on selected.poolDumpAllowed; that flag can become stale.
+  return !!(state.selected &&
+    state.selected.source==="deck" &&
+    state.deckDumpRunActive &&
+    deckDumpRemaining()>0 &&
+    anyOpenPoolSlot());
+}
+function canAIDumpDeckToPool(){
+  if(!state.deck.length) return false;
+  if(!state.deckDumpRunActive) ensureDeckDumpRunMayStart();
+  return !!(state.deckDumpRunActive && deckDumpRemaining()>0 && anyOpenPoolSlot());
+}
+function tileContainsBlack(tile){
+  return !!(tile && tile.sides && tile.sides.includes("black"));
+}
+function isSeededStarterTile(tile){
+  return !!(tile && tile.starter===true && tile.owner);
+}
+function overwriteRuleDiagnostic(q,r,source){
+  // Captured area status is intentionally ignored here.
+  // Captured/linked areas are visual + scoring only and do not create overwrite immunity.
+  const key=`${q},${r}`;
+  const target=state.board[key];
+
+  if(!target) return "Target is empty; this is normal placement, not overwrite.";
+  if(source!=="hand") return "Overwrite blocked: only hand tiles can overwrite occupied board spaces.";
+  if(isProtectedOverwriteSpace(q,r)) return "Overwrite blocked: this board space is protected by the center or a seeded jewel.";
+  if(isSeededStarterTile(target.tile)) return "Overwrite blocked: seeded jewel tiles cannot be overwritten.";
+  if(tileContainsBlack(target.tile)) return "Overwrite blocked: this individual target tile contains black.";
+  if(!anyOpenPoolSlot()) return "Overwrite blocked: pool needs an open slot for the displaced tile.";
+  return "Overwrite allowed if the replacement tile matches all neighboring edges.";
+}
+
+function canOverwriteTarget(q,r,source){
+  if(isCenterVoid(q,r)) return false;
+  const key=`${q},${r}`;
+  const target=state.board[key];
+  if(!target) return true;
+  if(source!=="hand") return false;
+  if(isProtectedOverwriteSpace(q,r)) return false;
+  if(isSeededStarterTile(target.tile)) return false;
+  if(tileContainsBlack(target.tile)) return false;
+  return anyOpenPoolSlot();
+}
+function poolRoomForDisplaced(source){
+  return anyOpenPoolSlot();
+}
+function placeBoardTileWithOverwrite(tile,q,r,source="hand"){
+  if(isCenterVoid(q,r)) return false;
+  const key=`${q},${r}`;
+  const displaced = state.board[key] ? clone(state.board[key].tile) : null;
+
+  if(displaced){
+    if(source!=="hand") return false;
+    if(isProtectedOverwriteSpace(q,r)) return false;
+    if(isSeededStarterTile(displaced)) return false;
+    if(tileContainsBlack(displaced)) return false;
+    const poolIdx = firstOpenPoolIndex();
+    if(poolIdx<0) return false;
+    state.pool[poolIdx] = displaced;
+  }
+
+  state.board[key]={tile:clone(tile)};
+  return true;
+}
+
+function isOpeningTurn(player){ return state.openingPlaced[player]===false; }
+function openingPlacementsUsed(player){ return state.openingBoardPlacementsThisTurn[player] || 0; }
+function isStarterTile(tile, player){ return !!(tile && tile.starter===true && tile.owner===player); }
+function pathLink(player, a, b){
+  const allowed = new Set([player, "gray"]);
+  if(!allowed.has(a) || !allowed.has(b)) return false;
+  if(a==="gray" && b==="gray") return false;
+  return true;
+}
+function buildPathGraph(player){
+  const nodes = Object.keys(state.board).filter(key=>key!=="0,0").map(key=>{
+    const [q,r]=key.split(",").map(Number);
+    return {key,q,r,tile:state.board[key].tile};
+  });
+  const index = new Map(nodes.map((n,i)=>[n.key,i]));
+  const adj = Array.from({length:nodes.length}, ()=>[]);
+  for(let i=0;i<nodes.length;i++){
+    const n = nodes[i];
+    for(const [dq,dr] of NEIGHBORS){
+      const key = `${n.q+dq},${n.r+dr}`;
+      if(!index.has(key)) continue;
+      const j = index.get(key);
+      if(j<=i) continue;
+      const a = n.tile.sides[sharedSideIndex(n.q,n.r,nodes[j].q,nodes[j].r)];
+      const b = nodes[j].tile.sides[sharedSideIndex(nodes[j].q,nodes[j].r,n.q,n.r)];
+      if(pathLink(player,a,b)){ adj[i].push(j); adj[j].push(i); }
+    }
+  }
+  return {nodes, adj};
+}
+function largestAreaForPlayer(player){
+  const {nodes, adj} = buildPathGraph(player);
+  const seen = new Set();
+  let best = 0;
+  for(let i=0;i<nodes.length;i++){
+    if(seen.has(i)) continue;
+    let size = 0;
+    const stack = [i];
+    seen.add(i);
+    while(stack.length){
+      const cur = stack.pop();
+      size++;
+      for(const nxt of adj[cur]){
+        if(!seen.has(nxt)){
+          seen.add(nxt);
+          stack.push(nxt);
+        }
+      }
+    }
+    best = Math.max(best, size);
+  }
+  return best;
+}
+function tileSectionValueForPlayer(tile, player){
+  if(!tile) return 0;
+  if(tile.kind==="solid") return tile.sides.every(c => c===player) ? 6 : 0;
+  if(tile.kind==="bicolor"){
+    // bicolor has one 3-edge section per color; matching section is worth 3
+    return tile.sides.includes(player) ? 3 : 0;
+  }
+  if(tile.kind==="tricolor"){
+    // tricolor has three 2-edge sections; repeated colors score once per section
+    const sections = [tile.sides[0], tile.sides[2], tile.sides[4]];
+    return sections.filter(c => c===player).length * 2;
+  }
+  return 0;
+}
+function scoringEdgeHasPlayer(tile, side, player){
+  // Direct exact match always counts.
+  if(tile.sides[side]===player) return true;
+
+  // Gray and black never create scoring continuity.
+  if(tile.sides[side]==="gray" || tile.sides[side]==="black") return false;
+
+  // Boundary correction for split tiles:
+  // Some bicolor/tricolor visual sections meet the board edge at the section boundary.
+  // Count the edge for the player only if the player's section is immediately adjacent
+  // to this non-gray/non-black edge. This fixes solid-color links to the visible
+  // player-color half/third without letting gray score.
+  if(tile.kind!=="solid"){
+    const prev = (side+5)%6;
+    const next = (side+1)%6;
+    return tile.sides[prev]===player || tile.sides[next]===player;
+  }
+
+  return false;
+}
+
+function scoringLink(player, tileA, sideA, tileB, sideB){
+  // Scoring continuity requires both touching sections to belong to the player.
+  // Gray never scores and never creates scoring continuity.
+  return scoringEdgeHasPlayer(tileA, sideA, player) && scoringEdgeHasPlayer(tileB, sideB, player);
+}
+function capturedAreaScoreForPlayer(player){
+  // Scoring must match the visible linked-area outlines.
+  // Every current outlined color-section component scores by its section size:
+  // solid = 6 edges, bicolor half = 3 edges, tricolor section = 2 edges.
+  if(typeof colorSectionComponentsForPlayer!=="function") return 0;
+  return colorSectionComponentsForPlayer(player).reduce((sum,comp)=>sum + comp.cells.length, 0);
+}
+
+function solidPlacementScoreForPlayer(player){
+  let total = 0;
+  for(const key of Object.keys(state.board)){
+    if(key==="0,0") continue;
+    const tile = state.board[key].tile;
+    if(tile && tile.kind==="solid" && tile.sides.every(c => c===player)) total += 1;
+  }
+  return total;
+}
+
+function vertexBonusScoreForPlayer(player){
+  // Bonus: if the 6 tile edges surrounding a shared vertex are all the player's color, +7.
+  // Detect by converting each placed tile's 6 vertices to quantized board coordinates.
+  const vertices = new Map();
+
+  for(const key of Object.keys(state.board)){
+    if(key==="0,0") continue;
+    const [q,r] = key.split(",").map(Number);
+    const tile = state.board[key].tile;
+    const [cx,cy] = axialToXY(q,r,BOARD_HEX_SIZE);
+
+    for(let i=0;i<6;i++){
+      const a1 = Math.PI * (i*60) / 180;
+      const a2 = Math.PI * (((i+1)%6)*60) / 180;
+      const vx = cx + BOARD_HEX_SIZE * Math.cos(a1);
+      const vy = cy + BOARD_HEX_SIZE * Math.sin(a1);
+      const vkey = `${Math.round(vx*1000)/1000},${Math.round(vy*1000)/1000}`;
+
+      if(!vertices.has(vkey)) vertices.set(vkey, []);
+      vertices.get(vkey).push(tile.sides[i]);
+      vertices.get(vkey).push(tile.sides[(i+5)%6]);
+    }
+  }
+
+  let bonus = 0;
+  for(const edges of vertices.values()){
+    // Three hexes around an interior vertex contribute exactly 6 edge segments.
+    if(edges.length === 6 && edges.every(c => c===player)) bonus += 7;
+  }
+  return bonus;
+}
+
+function totalScoreForPlayer(player){
+  return capturedAreaScoreForPlayer(player) + solidPlacementScoreForPlayer(player) + vertexBonusScoreForPlayer(player);
+}
+
+function scoreSnapshot(){
+  return {
+    red:totalScoreForPlayer("red"),
+    green:totalScoreForPlayer("green"),
+    blue:totalScoreForPlayer("blue")
+  };
+}
+
+function scoringTileKeysForPlayer(player){
+  const scoringKeys=new Set();
+
+  // Solids on board always add +1 for their color.
+  for(const key of Object.keys(state.board)){
+    if(key==="0,0") continue;
+    const tile=state.board[key].tile;
+    if(tile && tile.kind==="solid" && tile.sides.every(c=>c===player)){
+      scoringKeys.add(key);
+    }
+  }
+
+  // Any tile touched by a visible/scoring linked color-section outline counts for flashing.
+  if(typeof colorSectionComponentsForPlayer==="function"){
+    for(const comp of colorSectionComponentsForPlayer(player)){
+      for(const cell of comp.cells) scoringKeys.add(cell.key);
+    }
+  }
+
+  return Array.from(scoringKeys);
+}
+
+function scoringTileSnapshot(){
+  return {
+    red:scoringTileKeysForPlayer("red"),
+    green:scoringTileKeysForPlayer("green"),
+    blue:scoringTileKeysForPlayer("blue")
+  };
+}
+
+function triggerScoreDelta(beforeScores,beforeTiles){
+  const afterScores=scoreSnapshot();
+  const afterTiles=scoringTileSnapshot();
+  const events=[];
+  const flashKeys=new Set();
+
+  for(const player of PLAYERS){
+    const delta=afterScores[player]-beforeScores[player];
+    if(delta===0) continue;
+
+    events.push({player,delta});
+
+    const keys = delta>0 ? afterTiles[player] : (beforeTiles && beforeTiles[player] ? beforeTiles[player] : []);
+    keys.forEach(k=>flashKeys.add(k));
+
+    // Always include the most recently placed coordinate if available.
+    if(state.lastPlaced) flashKeys.add(`${state.lastPlaced.q},${state.lastPlaced.r}`);
+  }
+
+  if(!events.length) return;
+
+  state.scoreFlash=events;
+  state.scoreFlashTiles=Array.from(flashKeys);
+  state.scoreFlashId=(state.scoreFlashId||0)+1;
+  renderAll();
+
+  const stamp=state.scoreFlashId;
+  setTimeout(()=>{
+    if(state.scoreFlashId===stamp){
+      state.scoreFlash=[];
+      state.scoreFlashTiles=[];
+      renderAll();
+    }
+  }, 1100);
+}
+
+function renderScorePopup(){
+  const area=document.getElementById("scorePopupArea");
+  if(!area) return;
+  area.innerHTML="";
+  if(!state.scoreFlash || !state.scoreFlash.length) return;
+
+  // Show the live +/- score popup only once, exactly when triggerScoreDelta fires.
+  // Do not re-display the previous scoring event every time renderAll runs
+  // from tile selection, rotation, AI flashing, etc.
+  const id=state.scoreFlashId||0;
+  if(id && scorePopupRenderedId===id) return;
+  scorePopupRenderedId=id;
+
+  state.scoreFlash.forEach(ev=>{
+    const div=document.createElement("div");
+    div.className="scorePopup";
+    div.style.color=playerStrokeColor(ev.player);
+    div.textContent=(ev.delta>0?"+":"") + ev.delta;
+    area.appendChild(div);
+  });
+}
+
+
+function anyLegalBoardMoveExists(){
+  for(const player of PLAYERS){
+    if(isOpeningTurn(player)){
+      for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++) for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+        const s=-q-r;
+        const tile = state.hands[player].find(Boolean);
+        if(tile && Math.max(Math.abs(q),Math.abs(r),Math.abs(s))<=BOARD_RADIUS && isBoardPlacementLegal(player,tile,q,r,false,"hand")) return true;
+      }
+      continue;
+    }
+    const candidates = [
+      ...state.hands[player].filter(Boolean),
+      ...state.pool.filter(Boolean),
+      ...state.deck
+    ];
+    for(const tile of candidates){
+      for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++) for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+        const s=-q-r;
+        if(Math.max(Math.abs(q),Math.abs(r),Math.abs(s))<=BOARD_RADIUS && isBoardPlacementLegal(player, tile, q, r, false, "deck")) return true;
+      }
+    }
+  }
+  return false;
+}
+function maybeEndGame(){
+  if(state.gameOver) return true;
+  if(anyLegalBoardMoveExists()) return false;
+  const scores = {red:totalScoreForPlayer("red"), green:totalScoreForPlayer("green"), blue:totalScoreForPlayer("blue")};
+  const best = Math.max(scores.red, scores.green, scores.blue);
+  const winners = PLAYERS.filter(p => scores[p]===best);
+  state.gameOver = true;
+  state.winner = winners.length===1 ? winners[0] : "tie";
+  recordTrainingGameResult(scores,winners);
+  renderAll();
+  setStatus(winners.length===1
+    ? `Game over. ${cap(winners[0])} wins with largest area ${best}. Scores R${scores.red} G${scores.green} B${scores.blue}.`
+    : `Game over. Tie at ${best}. Scores R${scores.red} G${scores.green} B${scores.blue}.`);
+  return true;
+}
+
+function hasAvailableBonusHandTile(player){
+  return state.hands[player].some(t => t !== null);
+}
+function triggerHandGlow(player, idx){
+  state.slotGlow[player] = idx;
+  renderAll();
+  setTimeout(()=>{
+    if(state.slotGlow[player]===idx){
+      state.slotGlow[player] = null;
+      renderAll();
+    }
+  }, 900);
+}
+
+
+function setAIFlash(flash){
+  state.aiFlash = flash;
+  renderAll();
+}
+function clearAIFlash(){
+  state.aiFlash = null;
+  renderAll();
+}
+// PLACEMENT_GLOW_RULE:
+ // Tile being placed and its destination should flash/glow in the moving player's color
+ // with a subtle fade in -> bright -> dim effect.
+function setMoveFlash(flash, ms=760){
+  state.moveFlash = flash;
+  renderAll();
+  const stamp=JSON.stringify(flash);
+  setTimeout(()=>{
+    if(JSON.stringify(state.moveFlash)===stamp){
+      state.moveFlash=null;
+      renderAll();
+    }
+  }, ms);
+}
+function delay(ms){
+  return new Promise(resolve => setTimeout(resolve, aiDelayMs(ms)));
+}
+function aiSourceFlashFromMove(move, player){
+  if(move.source==="hand") return {kind:"hand", player, index:move.index};
+  if(move.source==="pool") return {kind:"pool", player, index:move.index};
+  if(move.source==="deck") return {kind:"deck", player};
+  return null;
+}
+function aiPlacementFlash(q,r,player=null){
+  return {kind:"board", q, r, player:player || currentPlayer()};
+}
+function compatible(newColor, existingColor){
+  // Directional black/gray rule:
+  // - nothing may be placed against an already-placed black edge
+  // - a newly placed black edge may touch any already-placed non-black edge, including gray
+  // - gray may touch any non-black color
+  // - black-to-black is never legal
+  if(existingColor==="black") return false;
+  if(newColor==="black") return existingColor!=="black";
+  if(newColor==="gray" || existingColor==="gray") return true;
+  return newColor===existingColor;
+}
+function isBoardPlacementLegal(player,tile,q,r,requireChainAdjacency=false,source=null){
+  if(isCenterVoid(q,r)) return false;
+
+  const key=`${q},${r}`;
+  const occupied = !!state.board[key];
+
+  // Occupied spaces may be overwritten only by hand tiles.
+  // The displaced tile must contain no black and there must be an open pool slot.
+  if(occupied && !canOverwriteTarget(q,r,source)) return false;
+
+  let touches=0, chainAdj=false;
+
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=q+dq, nr=r+dr;
+    if(isCenterVoid(nq,nr)) continue;
+    const neighbor=state.board[`${nq},${nr}`];
+    if(!neighbor) continue;
+
+    // The tile being overwritten is not adjacent to itself; only neighboring cells matter.
+    touches++;
+    const mySide = sharedSideIndex(q,r,nq,nr);
+    const theirSide = sharedSideIndex(nq,nr,q,r);
+    const myColor=tile.sides[mySide];
+    const theirColor=neighbor.tile.sides[theirSide];
+
+    // Black edge rule clarification:
+    // Existing black edges block new growth into empty hexes.
+    // But if a player is overwriting an already-occupied hex from hand, that space already exists
+    // next to the black edge, so non-black replacement edges are allowed there.
+    // Black-to-black remains illegal.
+    if(theirColor==="black" && occupied && source==="hand"){
+      if(myColor==="black") return false;
+    } else if(!compatible(myColor,theirColor)) return false;
+
+    if(state.lastPlaced && nq===state.lastPlaced.q && nr===state.lastPlaced.r) chainAdj=true;
+  }
+
+  if(requireChainAdjacency && touches>0 && !chainAdj) return false;
+  return true;
+}
+function illegalBoardPlacementReason(player,tile,q,r,source=null){
+  if(isCenterVoid(q,r)) return "Center is no-space and cannot be used.";
+  const key=`${q},${r}`;
+  if(state.board[key]){
+    return overwriteRuleDiagnostic(q,r,source);
+  } else if(blackBlockedDirectionsForCell(q,r).length){
+    return "Illegal placement: this empty space is blocked by tangency with a black edge.";
+  }
+  return "Illegal placement: every touching edge must follow adjacency rules.";
+}
+
+function legalCellsExist(player,tile,requireChainAdjacency,source=null){
+  for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++) for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+    const s=-q-r;
+    if(Math.max(Math.abs(q),Math.abs(r),Math.abs(s))<=BOARD_RADIUS && isBoardPlacementLegal(player,tile,q,r,requireChainAdjacency,source)) return true;
+  }
+  return false;
+}
+function drawTile(svg,tile,x,y,size,opt={}){
+  const g=svgel("g");
+  const selectedPlayer = opt.selectedPlayer || (opt.selected ? currentPlayer() : null);
+  const selStroke = selectedPlayer ? playerStrokeColor(selectedPlayer) : COLORS.sel;
+  const omitSides = new Set(opt.omitSides || []);
+  if(opt.glowPlayer) applyMoveGlow(g, opt.glowPlayer);
+
+  if(opt.click){ g.style.cursor="pointer"; g.addEventListener("click",opt.click); }
+
+  if(opt.hiddenFrame){
+    g.appendChild(svgel("polygon",{points:hexPoints(x,y,size),fill:COLORS.hidden,stroke:opt.selected?selStroke:"#000","stroke-width":opt.selected?3:1.8}));
+    const t=svgel("text",{x,y:y+5,"text-anchor":"middle","font-size":String(Math.max(18, size*1.25)),"font-weight":"900",fill:"#fff"});
+    t.textContent="?";
+    g.appendChild(t);
+    svg.appendChild(g);
+    return;
+  }
+
+  if(opt.slot){
+    const fill="none";
+    const stroke=opt.selected?selStroke:"#cfcfcf";
+    g.appendChild(svgel("polygon",{points:hexPoints(x,y,size),fill,stroke,"stroke-width":opt.selected?3:2}));
+    svg.appendChild(g);
+    return;
+  }
+
+  if(opt.question){
+    g.appendChild(svgel("polygon",{points:hexPoints(x,y,size),fill:"#fff",stroke:opt.selected?selStroke:"#000","stroke-width":opt.selected?3:2}));
+    const t=svgel("text",{x,y:y+8,"text-anchor":"middle","font-size":"30","font-weight":"800"});
+    t.textContent="?";
+    g.appendChild(t);
+    svg.appendChild(g);
+    return;
+  }
+
+  if(!tile){
+    g.appendChild(svgel("polygon",{points:hexPoints(x,y,size),fill:"#fff",stroke:opt.selected?selStroke:"#000","stroke-width":opt.selected?3:1}));
+    svg.appendChild(g);
+    return;
+  }
+
+  if(tile.starter===true && tile.owner && tile.kind==="solid" && !opt.disableJewel){
+    drawJewelTile(svg,tile,x,y,size,opt);
+    return;
+  }
+
+  const verts=[0,60,120,180,240,300].map(a=>{
+    const rad=Math.PI*a/180;
+    return [x+size*Math.cos(rad), y+size*Math.sin(rad)];
+  });
+
+  // Fill each wedge.
+  for(let i=0;i<6;i++){
+    const p1=verts[i], p2=verts[(i+1)%6];
+    g.appendChild(svgel("polygon",{
+      points:`${x},${y} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`,
+      fill:COLORS[tile.sides[i]],
+      stroke:"none"
+    }));
+  }
+
+  // Outside edge outlines match each wedge color, slightly lighter.
+  // Omit scoring-linked edges so connected captured areas read as continuous color.
+  for(let i=0;i<6;i++){
+    if(omitSides.has(i)) continue;
+    const p1=verts[i], p2=verts[(i+1)%6];
+    g.appendChild(svgel("line",{
+      x1:p1[0], y1:p1[1], x2:p2[0], y2:p2[1],
+      stroke:lighterEdgeColor(tile.sides[i]),
+      "stroke-width":opt.selected?3:1.8,
+      "stroke-linecap":"round"
+    }));
+  }
+
+  if(opt.selected){
+    g.appendChild(svgel("polygon",{
+      points:hexPoints(x,y,size),
+      fill:"none",
+      stroke:selStroke,
+      "stroke-width":3
+    }));
+  }
+
+  svg.appendChild(g);
+}
+function selectOrRotate(sel){
+  const s=state.selected;
+  if(s && s.source===sel.source && s.index===sel.index){
+    if(s.tile.kind!=="solid"){ s.tile.sides.unshift(s.tile.sides.pop()); renderAll(); setStatus("Tile rotated 60° clockwise."); }
+    return;
+  }
+  state.selected={source:sel.source,index:sel.index,tile:clone(sel.tile),forcedBoard:!!sel.forcedBoard};
+  renderAll(); setStatus(state.selected.forcedBoard?"Tile selected. It must go on the board.":"Tile selected. Tap again to rotate, or choose a destination.");
+}
+function tryDrawDeck(){
+  if(state.gameOver || state.winner) return;
+  const player=currentPlayer();
+  if(state.selected){ setStatus("Place the selected tile first."); return; }
+  if(!isOpeningTurn(player) && state.placementsThisTurn>=1){ setStatus("After your first placement, only 1 additional tile from hand is allowed."); return; }
+
+  ensureDeckDumpRunMayStart();
+
+  while(state.deck.length){
+    const tile=state.deck.shift();
+    const canDumpToPool = !!(state.deckDumpRunActive && deckDumpRemaining()>0 && anyOpenPoolSlot());
+    const handOpen = anyOpenHandSlot(player);
+    const boardLegal = legalCellsExist(player,tile,false,"deck");
+    const forcedBoard = !handOpen && !canDumpToPool;
+
+    if(forcedBoard && !boardLegal){
+      // No legal way to keep this card. Send it to bottom and try the next one.
+      state.deck.push(tile);
+      continue;
+    }
+
+    state.selected={
+      source:"deck",
+      index:-1,
+      tile,
+      forcedBoard:forcedBoard,
+      poolDumpAllowed:canDumpToPool
+    };
+
+    renderAll();
+
+    if(canDumpToPool){
+      const limit=state.deckDumpLimitThisTurn||0;
+      setStatus(`Deck card flipped. Pool dump allowed: ${state.deckDumpsThisTurn}/${limit} used, ${deckDumpRemaining()} remaining. Or keep this card in hand/board.`);
+    } else if(state.deckDumpRunActive && deckDumpRemaining()<=0){
+      const keptNumber=(state.deckDumpLimitThisTurn||0)+1;
+      setStatus(`Deck dump limit reached. This flipped deck card #${keptNumber} must be placed on the board or in hand.`);
+    } else {
+      setStatus("Deck card flipped. Place it on the board or in hand. Pool dumping needs at least one open pool slot before your first placement.");
+    }
+    return;
+  }
+  setStatus("Deck empty.");
+}
+function completeDeckDumpIfPoolFull(player){
+  // Legacy helper kept for safety; deck dump no longer depends on a fully empty pool.
+  // Dump limit is the number of open pool slots when the run begins.
+  commitHistory();
+  renderAll();
+  if(state.deckDumpRunActive && deckDumpRemaining()<=0){
+    setStatus("Deck dump limit reached. Flip one more deck card and place it on board or in hand.");
+  } else {
+    setStatus(`Deck card dumped to pool. You may dump ${deckDumpRemaining()} more deck card(s), or keep the next one in hand/board.`);
+  }
+  return false;
+}
+
+function afterSuccessfulPlacement(sourceUsed,onBoard){
+  state.placementsThisTurn += 1;
+  if(state.placementsThisTurn===1) state.firstPlacedSource=sourceUsed;
+  renderAll();
+  const player = currentPlayer();
+
+  if(isOpeningTurn(player)){
+    if(onBoard){
+      state.openingBoardPlacementsThisTurn[player] = (state.openingBoardPlacementsThisTurn[player] || 0) + 1;
+      const used = state.openingBoardPlacementsThisTurn[player];
+      const remaining = state.hands[player].filter(Boolean).length;
+      if(sourceUsed==="hand" && used < 3 && remaining > 0){
+        setStatus(`${cap(player)} may place another hand tile, or tap NEXT TURN to keep remaining hand tile(s).`);
+        return;
+      }
+      state.openingPlaced[player] = true;
+      state.openingBoardPlacementsThisTurn[player] = 0;
+      if(maybeEndGame()){ aiRunning=false; return; }
+      setStatus(`${cap(player)} completed the opening board placement turn.`);
+      scheduleEndTurn(120);
+      return;
+    } else {
+      if(maybeEndGame()){ aiRunning=false; return; }
+      setStatus(`${cap(player)} completed the turn.`);
+      scheduleEndTurn(120);
+      return;
+    }
+  }
+
+  const handChainUnlocked = (sourceUsed==="hand" && onBoard && state.firstPlacedSource==="hand" && state.placementsThisTurn < 3);
+  if(handChainUnlocked && hasAvailableBonusHandTile(player)){
+    setStatus(`${cap(player)} may place another hand tile, or tap NEXT TURN to keep remaining hand tile(s).`);
+    return;
+  }
+  if(maybeEndGame()){ aiRunning=false; return; }
+  setStatus(`${cap(player)} completed the turn.`);
+  scheduleEndTurn(120);
+}
+function moveSelectedToHand(idx){
+  const player=currentPlayer();
+  if(!state.selected){ setStatus("Select a tile first."); return; }
+  if(state.selected.forcedBoard){ showIllegal(); setStatus("This drawn tile must go on the board."); return; }
+  if(state.hands[player][idx]!==null){ showIllegal(); setStatus("That hand slot is already occupied."); return; }
+  if(state.selected.source==="hand"){ showIllegal(); setStatus("That tile is already in your hand."); return; }
+
+  const movedTile=clone(state.selected.tile);
+  const beforeScores=compactScores();
+  if(state.selected.source==="pool") state.pool[state.selected.index]=null;
+
+  const src=state.selected.source;
+  state.hands[player][idx]=clone(state.selected.tile);
+  recordTrainingMove({player,action:"store",source:src,destination:"hand",handIndex:idx,tile:movedTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+  setMoveFlash({kind:"hand",player,index:idx});
+  state.selected=null;
+  renderAll();
+  if(player!=="red") triggerHandGlow(player, idx);
+  afterSuccessfulPlacement(src,false);
+}
+function moveSelectedToPool(idx){
+  if(!state.selected){ setStatus("Select a tile first."); return; }
+  if(state.pool[idx]!==null){ showIllegal(); setStatus("That pool slot is already occupied."); return; }
+  if(state.selected.source==="pool"){ showIllegal(); setStatus("That tile is already in the pool."); return; }
+
+  const player=currentPlayer();
+
+  if(state.selected.source==="deck"){
+    if(!canDumpSelectedDeckTileToPool()){
+      showIllegal();
+      setStatus(`Deck dump not allowed now. Dumped ${state.deckDumpsThisTurn||0}/${state.deckDumpLimitThisTurn||0}; the next deck card must go to hand or board.`);
+      return;
+    }
+  } else if(state.selected.forcedBoard){
+    showIllegal();
+    setStatus("This drawn tile must go on the board.");
+    return;
+  }
+
+  if(state.selected.source==="hand") state.hands[player][state.selected.index]=null;
+  if(state.selected.source==="pool" && state.selected.index>=0) state.pool[state.selected.index]=null;
+
+  const movedTile=clone(state.selected.tile);
+  const beforeScores=compactScores();
+  const src=state.selected.source;
+  state.pool[idx]=clone(state.selected.tile);
+  recordTrainingMove({player,action:"pool",source:src,destination:"pool",poolIndex:idx,tile:movedTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+  setMoveFlash({kind:"pool",player,index:idx});
+  state.selected=null;
+
+  if(src==="deck"){
+    state.deckDumpsThisTurn=(state.deckDumpsThisTurn||0)+1;
+    commitHistory();
+    renderAll();
+    const limit=state.deckDumpLimitThisTurn||0;
+    if(deckDumpRemaining()<=0){
+      setStatus(`Deck dump limit reached (${state.deckDumpsThisTurn}/${limit}). Flip the next deck card and place it on the board or in hand.`);
+    } else {
+      setStatus(`Deck card dumped to pool (${state.deckDumpsThisTurn}/${limit}). You may dump ${deckDumpRemaining()} more deck card(s), then the following card must go to hand/board.`);
+    }
+    return;
+  }
+
+  renderAll();
+  afterSuccessfulPlacement(src,false);
+}
+
+
+
+function placeSelectedOnBoard(q,r){
+  const player=currentPlayer();
+  if(!state.selected){ setStatus("Pick a tile first."); return; }
+  const candidateTile = state.selected.tile;
+
+  if(isOpeningTurn(player)){
+    // Opening board placement can come from hand OR from a deck-drawn tile.
+    // If it touches anything, every touching edge must still obey adjacency rules.
+    if(!(state.selected.source==="hand" || state.selected.source==="deck")){
+      showIllegal();
+      setStatus("Opening board placement can come from hand or deck.");
+      return;
+    }
+    const key = `${q},${r}`;
+    const src=state.selected.source;
+    if(!isBoardPlacementLegal(player, state.selected.tile, q, r, false, src)){
+      showIllegal();
+      setStatus(illegalBoardPlacementReason(player,state.selected.tile,q,r,src));
+      return;
+    }
+    const beforeScores=scoreSnapshot();
+    const beforeTiles=scoringTileSnapshot();
+    const overwrittenTile=state.board[key] ? clone(state.board[key].tile) : null;
+    if(src==="hand") state.hands[player][state.selected.index]=null;
+    if(!placeBoardTileWithOverwrite(candidateTile,q,r,src)){
+      showIllegal();
+      setStatus("Overwrite illegal: pool is full.");
+      return;
+    }
+    state.selected = null;
+    state.lastPlaced = {q,r};
+    triggerScoreDelta(beforeScores,beforeTiles);
+    recordTrainingMove({player,action:"board",source:src,destination:"board",q,r,tile:candidateTile,overwrittenTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+    setMoveFlash({kind:"board",player,q,r});
+    afterSuccessfulPlacement(src, true);
+    return;
+  }
+
+  const continuedHandAllowed = (state.placementsThisTurn>=1 && state.placementsThisTurn<3 && state.firstPlacedSource==="hand" && state.selected.source==="hand");
+  const requireChain = false;
+  if(state.placementsThisTurn>=1 && !continuedHandAllowed){
+    showIllegal();
+    setStatus("After your first placement, only additional hand tiles are allowed, up to 3 hand tiles total.");
+    return;
+  }
+  const src=state.selected.source;
+  if(!isBoardPlacementLegal(player,state.selected.tile,q,r,requireChain,src)){
+    showIllegal();
+    setStatus(isCenterVoid(q,r) ? "Center is no-space and cannot be used." : (state.board[`${q},${r}`] ? "Overwrite illegal: only hand tiles can overwrite; center-ring spaces, spaces adjacent to seeded jewels, seeded starter tiles, and black-containing tiles cannot be overwritten; pool needs an open slot; edges must be legal." : "Illegal placement."));
+    return;
+  }
+  const beforeScores=scoreSnapshot();
+  const beforeTiles=scoringTileSnapshot();
+  const overwrittenTile=state.board[`${q},${r}`] ? clone(state.board[`${q},${r}`].tile) : null;
+  if(src==="hand") state.hands[player][state.selected.index]=null;
+  if(src==="pool") state.pool[state.selected.index]=null;
+  const placed=clone(state.selected.tile);
+  if(!placeBoardTileWithOverwrite(placed,q,r,src)){
+    showIllegal();
+    setStatus("Overwrite illegal: pool is full.");
+    return;
+  }
+  state.selected=null;
+  state.lastPlaced={q,r};
+  triggerScoreDelta(beforeScores,beforeTiles);
+  recordTrainingMove({player,action:"board",source:src,destination:"board",q,r,tile:placed,overwrittenTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+  setMoveFlash({kind:"board",player,q,r});
+  afterSuccessfulPlacement(src,true);
+}
+function endTurn(){
+  cancelPendingEndTurn();
+  normalizeTurnState();
+  if(state.winner) return;
+  state.selected=null; state.placementsThisTurn=0; state.firstPlacedSource=null; state.lastPlaced=null; resetDeckDumpRun(); advanceTurn();
+  commitHistory();
+  renderAll();
+  if(isCurrentPlayerHuman()) setStatus("Red's turn. Choose a tile from deck, hand, or pool.");
+  else runAI();
+}
+function rotateTileClone(tile, steps=1){
+  const t=clone(tile);
+  const n=((steps%6)+6)%6;
+  for(let i=0;i<n;i++){
+    if(t.kind!=="solid") t.sides.unshift(t.sides.pop());
+  }
+  t.rotation=((tile.rotation||0)+n)%6;
+  return t;
+}
+function aiTileRotations(tile){
+  if(!tile) return [];
+  const out=[];
+  const seen=new Set();
+  for(let steps=0; steps<6; steps++){
+    const rt=rotateTileClone(tile,steps);
+    const key=rt.sides.join("|");
+    if(!seen.has(key)){
+      seen.add(key);
+      out.push(rt);
+    }
+  }
+  return out;
+}
+function addAIRotatedBoardMoves(moves, player, source, index, tile, extra={}){
+  for(const rt of aiTileRotations(tile)){
+    for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++){
+      for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+        const s=-q-r;
+        if(Math.max(Math.abs(q),Math.abs(r),Math.abs(s))>BOARD_RADIUS) continue;
+        if(isBoardPlacementLegal(player,rt,q,r,false,source)){
+          moves.push(Object.assign({source,player,index,kind:"board",q,r,tile:clone(rt),rotation:rt.rotation||0},extra));
+        }
+      }
+    }
+  }
+}
+function drawFromSpecificSource(move){
+  if(move.kind==="board" && move.tile) return clone(move.tile);
+  if(move.source==="hand") return clone(state.hands[move.player][move.index]);
+  if(move.source==="pool") return clone(state.pool[move.index]);
+  return clone(state.deck[0]);
+}
+function removeFromSource(move){ if(move.source==="hand") state.hands[move.player][move.index]=null; else if(move.source==="pool") state.pool[move.index]=null; else state.deck.shift(); }
+function tilePlayerValue(tile, player){
+  if(!tile) return 0;
+  let count = tile.sides.filter(c => c===player).length;
+  let gray = tile.sides.filter(c => c==="gray").length;
+  let solidOwn = tile.kind==="solid" && tile.sides.every(c => c===player);
+  return (solidOwn ? 100 : 0) + count*10 + gray*3;
+}
+function aiPossibleFirstMoves(player){
+  const moves=[];
+
+  if(isOpeningTurn(player)){
+    state.hands[player].forEach((tile,idx)=>{
+      if(!tile) return;
+      addAIRotatedBoardMoves(moves,player,"hand",idx,tile,{opening:true});
+    });
+
+    const openHandIdx = state.hands[player].findIndex(x=>x===null);
+    if(openHandIdx>=0){
+      state.pool.forEach((tile,idx)=>{
+        if(tile) moves.push({source:"pool",player,index:idx,kind:"hand",handIndex:openHandIdx,tile:clone(tile),openingDelay:true});
+      });
+    }
+
+    if(state.deck.length){
+      const tile=state.deck[0];
+      addAIRotatedBoardMoves(moves,player,"deck",-1,tile,{opening:true});
+
+      const handIdx=state.hands[player].findIndex(x=>x===null);
+      if(handIdx>=0) moves.push({source:"deck",player,index:-1,kind:"hand",handIndex:handIdx,tile:clone(tile),openingDelay:true});
+      const poolIdx=state.pool.findIndex(x=>x===null);
+      if(poolIdx>=0 && canAIDumpDeckToPool()) moves.push({source:"deck",player,index:-1,kind:"pool",poolIndex:poolIdx,tile:clone(tile),openingDelay:true});
+    }
+    return moves;
+  }
+
+  state.hands[player].forEach((tile,idx)=>{
+    if(!tile) return;
+    addAIRotatedBoardMoves(moves,player,"hand",idx,tile,{});
+  });
+
+  state.pool.forEach((tile,idx)=>{
+    if(!tile) return;
+    addAIRotatedBoardMoves(moves,player,"pool",idx,tile,{});
+  });
+
+  const openHandIdx2 = state.hands[player].findIndex(x=>x===null);
+  if(openHandIdx2>=0){
+    state.pool.forEach((tile,idx)=>{
+      if(tile) moves.push({source:"pool",player,index:idx,kind:"hand",handIndex:openHandIdx2,tile:clone(tile)});
+    });
+  }
+
+  if(state.deck.length){
+    const tile=state.deck[0];
+    addAIRotatedBoardMoves(moves,player,"deck",-1,tile,{});
+
+    const handIdx=state.hands[player].findIndex(x=>x===null);
+    if(handIdx>=0) moves.push({source:"deck",player,index:-1,kind:"hand",handIndex:handIdx,tile:clone(tile)});
+    const poolIdx=state.pool.findIndex(x=>x===null);
+    if(poolIdx>=0 && canAIDumpDeckToPool()) moves.push({source:"deck",player,index:-1,kind:"pool",poolIndex:poolIdx,tile:clone(tile)});
+  }
+
+  return moves;
+}
+
+function simulateBoardMoveScore(move, player){
+  if(move.kind!=="board") return {ownGain:0, oppGain:0, oppLoss:0, ownAfter:totalScoreForPlayer(player), bestOppAfter:0, leadAfter:0};
+  const sim=fullSimulateBoardMove(move, player);
+  if(!sim) return {ownGain:-9999, oppGain:9999, oppLoss:0, ownAfter:totalScoreForPlayer(player), bestOppAfter:9999, leadAfter:-9999};
+  return sim;
+}
+
+function tileOpponentValue(tile, player){
+  return PLAYERS.filter(p=>p!==player).reduce((sum,p)=>sum + tilePlayerValue(tile,p), 0);
+}
+
+function scoreMap(){
+  const out={};
+  for(const p of PLAYERS) out[p]=totalScoreForPlayer(p);
+  return out;
+}
+function scoreDeltas(before, after){
+  const out={};
+  for(const p of PLAYERS) out[p]=(after[p]||0)-(before[p]||0);
+  return out;
+}
+function leadForPlayer(scores, player){
+  const opps=PLAYERS.filter(p=>p!==player);
+  return scores[player] - Math.max(...opps.map(p=>scores[p]));
+}
+function fullSimulateBoardMove(move, player){
+  if(!move || move.kind!=="board") return null;
+  if(!isBoardPlacementLegal(player, move.tile, move.q, move.r, false, move.source)) return null;
+
+  const before=scoreMap();
+  const key=`${move.q},${move.r}`;
+  const oldBoardEntry=state.board[key] ? clone(state.board[key]) : null;
+  state.board[key]={tile:clone(move.tile)};
+
+  const after=scoreMap();
+
+  if(oldBoardEntry) state.board[key]=oldBoardEntry;
+  else delete state.board[key];
+
+  const deltas=scoreDeltas(before,after);
+  const opps=PLAYERS.filter(p=>p!==player);
+  return {
+    before, after, deltas,
+    ownGain:deltas[player],
+    oppGain:opps.reduce((sum,p)=>sum+Math.max(0,deltas[p]),0),
+    oppLoss:opps.reduce((sum,p)=>sum+Math.max(0,-deltas[p]),0),
+    ownAfter:after[player],
+    bestOppAfter:Math.max(...opps.map(p=>after[p])),
+    leadAfter:leadForPlayer(after,player),
+    leadBefore:leadForPlayer(before,player)
+  };
+}
+function directOpponentScoringContactValueForMove(move, player){
+  let total=0, count=0;
+  for(const opp of PLAYERS.filter(p=>p!==player)){
+    const v=directScoringContactValueForMove(move,opp);
+    const c=directScoringContactCountForMove(move,opp);
+    total += v;
+    count += c;
+  }
+  return {value:total,count};
+}
+function tileDangerToOpponents(tile, player){
+  return PLAYERS.filter(p=>p!==player).reduce((sum,p)=>{
+    const count=tile.sides.filter(c=>c===p).length;
+    const solid=tile.kind==="solid" && tile.sides.every(c=>c===p);
+    return sum + count*10 + (solid?140:0);
+  },0);
+}
+function openAdjacentCount(q,r){
+  let count=0;
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=q+dq, nr=r+dr;
+    const s=-nq-nr;
+    if(Math.max(Math.abs(nq),Math.abs(nr),Math.abs(s))>BOARD_RADIUS) continue;
+    if(isCenterVoid(nq,nr)) continue;
+    if(!state.board[`${nq},${nr}`]) count++;
+  }
+  return count;
+}
+function playerPreferredOpeningAngle(player){
+  // Spread seeded jewel openings into different board regions.
+  if(player==="red") return -90;
+  if(player==="green") return 30;
+  if(player==="blue") return 150;
+  return 0;
+}
+function angularClosenessBonus(q,r,player){
+  const [x,y]=axialToXY(q,r,1);
+  let a=Math.atan2(y,x)*180/Math.PI;
+  const pref=playerPreferredOpeningAngle(player);
+  let diff=Math.abs(((a-pref+540)%360)-180);
+  return Math.max(0, 42 - diff*0.35);
+}
+function openingStarterZoneBonus(move, player){
+  if(!(move && move.opening && move.tile && move.tile.starter===true && move.tile.owner===player)) return 0;
+
+  const s=-move.q-move.r;
+  const dist=Math.max(Math.abs(move.q),Math.abs(move.r),Math.abs(s));
+  let val=0;
+
+  // The old center-to-perimeter game overvalued center-ring placement.
+  // Current game wants a protected growth zone, usually a little away from center.
+  if(dist===1) val -= 260;
+  else if(dist===2) val += 95;
+  else if(dist===3) val += 135;
+  else if(dist===4) val += 70;
+
+  val += openAdjacentCount(move.q,move.r)*9;
+  val += angularClosenessBonus(move.q,move.r,player);
+
+  return val;
+}
+function isMoveUsingStarterSafely(move, player){
+  return !!(move && move.tile && move.tile.starter===true && move.tile.owner===player &&
+    (directScoringContactCountForMove(move,player)>0 || openingStarterZoneBonus(move,player)>0));
+}
+function strategicBoardShapeBonus(move, player){
+  const s=-move.q-move.r;
+  const dist=Math.max(Math.abs(move.q),Math.abs(move.r),Math.abs(s));
+  let val=0;
+
+  const isOwnStarter = !!(move && move.tile && move.tile.starter===true && move.tile.owner===player);
+
+  // Center/protected spaces are useful, but no longer automatic best moves.
+  if(isCenterRingProtectedSpace(move.q,move.r)) val += isOwnStarter ? -180 : 18;
+  if(typeof isProtectedOverwriteSpace==="function" && isProtectedOverwriteSpace(move.q,move.r)) val += isOwnStarter ? 18 : 32;
+
+  if(state.board[`${move.q},${move.r}`]) val += 120; // overwrite is often strategically useful
+
+  // Old version strongly rewarded centrality. Current area-control scoring only weakly rewards it.
+  val += (BOARD_RADIUS-dist)*2;
+
+  if(isOwnStarter) val += openingStarterZoneBonus(move, player);
+  if(isMoveUsingStarterSafely(move,player)) val += isOwnStarter ? 85 : 120;
+
+  return val;
+}
+
+function edgeBelongsToPlayer(tile, side, player){
+  return !!(tile && scoringEdgeHasPlayer(tile, side, player));
+}
+
+function moveFutureGrowthPotential(move, player){
+  if(!move || move.kind!=="board") return 0;
+  let val=0;
+  const key=`${move.q},${move.r}`;
+
+  for(let side=0; side<6; side++){
+    const nb=neighborForSide(move.q,move.r,side);
+    if(!nb || isCenterVoid(nb.q,nb.r)) continue;
+
+    const nKey=`${nb.q},${nb.r}`;
+    const neighbor=state.board[nKey];
+    const ownEdge=edgeBelongsToPlayer(move.tile,side,player);
+    const edgeColor=move.tile.sides[side];
+
+    if(!neighbor){
+      if(ownEdge){
+        val += 26; // Go-like "liberty": open extension for this color area
+        if(typeof isProtectedOverwriteSpace==="function" && isProtectedOverwriteSpace(nb.q,nb.r)) val += 16;
+        if(blackBlockedDirectionsForCell(nb.q,nb.r).length) val -= 20;
+      }
+      if(edgeColor==="black") val += 20; // Black creates a wall/control edge.
+      continue;
+    }
+
+    const theirSide=sharedSideIndex(nb.q,nb.r,move.q,move.r);
+    if(ownEdge && scoringLink(player,move.tile,side,neighbor.tile,theirSide)){
+      val += 34; // extension of an existing chain/area
+    }
+
+    for(const opp of PLAYERS.filter(p=>p!==player)){
+      if(edgeBelongsToPlayer(neighbor.tile,theirSide,opp) && edgeColor==="black") val += 42; // blocks opponent growth
+      if(edgeBelongsToPlayer(move.tile,side,opp)) val -= 30; // gives opponent a useful edge
+    }
+  }
+
+  // Domino/Mahjong-like efficiency: more own edges with future outlets are valuable.
+  val += move.tile.sides.filter(c=>c===player).length*7;
+  val += move.tile.sides.filter(c=>"gray"===c).length*4;
+
+  return val;
+}
+
+function tacticalForkPotential(move, player){
+  if(!move || move.kind!=="board") return 0;
+  let ownOpen=0, oppBlocked=0;
+  for(let side=0; side<6; side++){
+    const nb=neighborForSide(move.q,move.r,side);
+    if(!nb || isCenterVoid(nb.q,nb.r)) continue;
+    const nKey=`${nb.q},${nb.r}`;
+    const neighbor=state.board[nKey];
+
+    if(edgeBelongsToPlayer(move.tile,side,player)){
+      if(!neighbor) ownOpen++;
+      else {
+        const theirSide=sharedSideIndex(nb.q,nb.r,move.q,move.r);
+        if(scoringLink(player,move.tile,side,neighbor.tile,theirSide)) ownOpen++;
+      }
+    }
+
+    if(move.tile.sides[side]==="black" && neighbor){
+      const theirSide=sharedSideIndex(nb.q,nb.r,move.q,move.r);
+      for(const opp of PLAYERS.filter(p=>p!==player)){
+        if(edgeBelongsToPlayer(neighbor.tile,theirSide,opp)) oppBlocked++;
+      }
+    }
+  }
+
+  // Chess-like "fork": one move creates multiple useful threats/open paths.
+  return Math.max(0,ownOpen-1)*34 + oppBlocked*30;
+}
+
+function quickReplyScore(move, player){
+  const sim=fullSimulateBoardMove(move,player);
+  if(!sim) return -999999;
+  const contactValue=directScoringContactValueForMove(move,player);
+  const contactCount=directScoringContactCountForMove(move,player);
+  const oppContact=directOpponentScoringContactValueForMove(move,player);
+  return sim.ownGain*1000 + sim.oppLoss*360 - sim.oppGain*900 +
+         contactValue*520 + contactCount*160 -
+         oppContact.value*420 + moveFutureGrowthPotential(move,player)*38 +
+         tacticalForkPotential(move,player)*42;
+}
+
+function generateBoardReplyMoves(player){
+  const moves=[];
+  state.hands[player].forEach((tile,idx)=>{
+    if(tile) addAIRotatedBoardMoves(moves,player,"hand",idx,tile,{});
+  });
+  state.pool.forEach((tile,idx)=>{
+    if(tile) addAIRotatedBoardMoves(moves,player,"pool",idx,tile,{});
+  });
+  if(state.deck.length) addAIRotatedBoardMoves(moves,player,"deck",-1,state.deck[0],{});
+  return moves;
+}
+
+function opponentBestReplyThreatAfterMove(move, player){
+  // Fast local reply-risk estimate.
+  // Previous version generated every possible opponent reply for every candidate move;
+  // that was too expensive in the browser and could freeze AI turns.
+  if(!move || move.kind!=="board") return 0;
+
+  let threat=0;
+  const key=`${move.q},${move.r}`;
+  const oldBoardEntry=state.board[key] ? clone(state.board[key]) : null;
+  state.board[key]={tile:clone(move.tile)};
+
+  for(const opp of PLAYERS.filter(p=>p!==player)){
+    let local=0;
+
+    // 1) Did the move expose/touch opponent-colored edges?
+    for(let side=0; side<6; side++){
+      const nb=neighborForSide(move.q,move.r,side);
+      if(!nb || isCenterVoid(nb.q,nb.r)) continue;
+
+      const nKey=`${nb.q},${nb.r}`;
+      const neighbor=state.board[nKey];
+      const moveEdgeForOpp=edgeBelongsToPlayer(move.tile,side,opp);
+
+      if(!neighbor){
+        if(moveEdgeForOpp) local += 1.1; // empty extension point for opponent color
+        continue;
+      }
+
+      const theirSide=sharedSideIndex(nb.q,nb.r,move.q,move.r);
+      if(scoringLink(opp,move.tile,side,neighbor.tile,theirSide)) local += 3.2;
+      if(edgeBelongsToPlayer(neighbor.tile,theirSide,opp) && move.tile.sides[side]!=="black") local += 0.9;
+    }
+
+    // 2) How much did this move immediately improve that opponent's score?
+    const sim=fullSimulateBoardMove(move, player);
+    if(sim && sim.deltas && sim.deltas[opp]>0) local += sim.deltas[opp] * 4.5;
+
+    // 3) If opponent has a useful hand/pool tile, rough danger only, no board search.
+    const oppHandDanger=(state.hands[opp]||[]).reduce((sum,t)=>sum+tilePlayerValue(t,opp),0);
+    const oppPoolDanger=(state.pool||[]).reduce((sum,t)=>sum+(t?tilePlayerValue(t,opp):0),0);
+    local += Math.min(8, oppHandDanger/28);
+    local += Math.min(5, oppPoolDanger/42);
+
+    threat=Math.max(threat,local);
+  }
+
+  if(oldBoardEntry) state.board[key]=oldBoardEntry;
+  else delete state.board[key];
+
+  return threat;
+}
+
+
+
+function handEfficiencyScore(tile, player){
+  if(!tile) return 0;
+  const own=tilePlayerValue(tile,player);
+  const danger=tileDangerToOpponents(tile,player);
+  const gray=tile.sides.filter(c=>c==="gray").length;
+  const black=tile.sides.filter(c=>c==="black").length;
+  // Mahjong/Domino style: keep flexible own tiles and blockers; steal dangerous opponent tiles from pool.
+  return own*1.2 + gray*8 + black*10 + danger*0.35;
+}
+
+
+
+
+function directScoringContactValueForMove(move, player){
+  if(!move || move.kind!=="board") return 0;
+
+  let value = 0;
+  let contacts = 0;
+  const tile = move.tile;
+
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=move.q+dq, nr=move.r+dr;
+    const neighbor=state.board[`${nq},${nr}`];
+    if(!neighbor) continue;
+
+    const mySide = sharedSideIndex(move.q,move.r,nq,nr);
+    const theirSide = sharedSideIndex(nq,nr,move.q,move.r);
+
+    if(scoringLink(player, tile, mySide, neighbor.tile, theirSide)){
+      contacts++;
+      value += tileSectionValueForPlayer(tile, player);
+      value += tileSectionValueForPlayer(neighbor.tile, player);
+    }
+  }
+
+  // Solid placement point: still useful, but much less important than linked area points.
+  if(tile.kind==="solid" && tile.sides.every(c=>c===player)) value += 1;
+
+  return value;
+}
+
+function directScoringContactCountForMove(move, player){
+  if(!move || move.kind!=="board") return 0;
+  let contacts = 0;
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=move.q+dq, nr=move.r+dr;
+    const neighbor=state.board[`${nq},${nr}`];
+    if(!neighbor) continue;
+    const mySide = sharedSideIndex(move.q,move.r,nq,nr);
+    const theirSide = sharedSideIndex(nq,nr,move.q,move.r);
+    if(scoringLink(player, move.tile, mySide, neighbor.tile, theirSide)) contacts++;
+  }
+  return contacts;
+}
+
+function aiBoardMoveScore(m, player){
+  if(!m || m.kind!=="board") return -999999;
+
+  const level=(state.aiLevel && state.aiLevel[player]) || "Expert";
+  const sim = simulateBoardMoveScore(m, player);
+  if(sim.ownGain<=-9000) return -999999;
+
+  const tv = tilePlayerValue(m.tile, player);
+  const ov = tileOpponentValue(m.tile, player);
+  const contactValue = directScoringContactValueForMove(m, player);
+  const contactCount = directScoringContactCountForMove(m, player);
+  const oppContact = directOpponentScoringContactValueForMove(m, player);
+  const growth = moveFutureGrowthPotential(m, player);
+  const fork = tacticalForkPotential(m, player);
+  const replyThreat = (level==="Pro" || level==="Expert") ? opponentBestReplyThreatAfterMove(m, player) : 0;
+  const ownColorEdges = m.tile.sides.filter(c=>c===player).length;
+
+  // Strategic priorities:
+  // - score for self
+  // - reduce opponents' score
+  // - avoid creating opponent score/links
+  // - expand existing linked regions rather than make isolated islands
+  // - favor protected/key spaces and useful overwrites
+  let val = 1450 * sim.ownGain;
+  val += 760 * sim.oppLoss;
+  val -= 1500 * sim.oppGain;
+  val += 275 * sim.leadAfter;
+  val += 980 * contactValue + 310 * contactCount;
+  val -= 680 * oppContact.value - 220 * oppContact.count;
+  val += 16 * tv - 15 * ov;
+  val += strategicBoardShapeBonus(m, player);
+  val += 72 * growth;
+  val += 95 * fork;
+  val -= 115 * replyThreat;
+
+  if(ownColorEdges>0 && contactCount===0) val -= 780;
+  if(ownColorEdges===0 && tv<8) val -= 120;
+
+  // Prefer placing from hand when chaining is possible, but don't overvalue it.
+  if(m.source==="hand") val += 45;
+  if(m.source==="pool") val += 18;
+  if(m.source==="deck") val += 6;
+
+  if(m.opening){
+    const handCount = state.hands[player].filter(Boolean).length;
+    val += handCount >= 3 ? 85 : handCount >= 2 ? 25 : -95;
+    if(m.tile && m.tile.starter===true && m.tile.owner===player){
+      val += 45;
+      val += openingStarterZoneBonus(m, player);
+    }
+  }
+
+  if(level==="Beginner") return val*0.25 + Math.random()*120;
+  if(level==="Intermediate") return val*0.6 + 25*tv - 25*ov + Math.random()*30;
+  if(level==="Pro"){
+    // Pro is much harsher about helping opponents and more lead-aware.
+    val += 420 * Math.max(0, sim.leadAfter);
+    val += 360 * Math.max(0, sim.oppLoss);
+    val -= 720 * Math.max(0, sim.oppGain);
+    val -= 520 * oppContact.value;
+    val += 170 * contactCount;
+    val += 65 * growth;
+    val += 120 * fork;
+    val -= 145 * replyThreat;
+    if(m.opening && m.tile && m.tile.starter===true && m.tile.owner===player){
+      val += openingStarterZoneBonus(m, player) * 0.8;
+    }
+  }
+
+  return val;
+}
+
+function aiBestHandBoardMove(player){
+  const moves=[];
+  state.hands[player].forEach((tile,idx)=>{
+    if(!tile) return;
+    addAIRotatedBoardMoves(moves,player,"hand",idx,tile,{opening:isOpeningTurn(player)});
+  });
+  const scored=moves.map(m=>({m,score:aiBoardMoveScore(m,player)}));
+  scored.sort((a,b)=>{
+    const diff=b.score-a.score;
+    return Math.abs(diff)<0.001 ? Math.random()-0.5 : diff;
+  });
+  return scored[0]?.m || null;
+}
+
+function aiChooseMove(player){
+  const moves=aiPossibleFirstMoves(player);
+  if(!moves.length) return null;
+
+  function score(m){
+    const tv = tilePlayerValue(m.tile, player);
+    const ov = tileOpponentValue(m.tile, player);
+
+    if(m.kind==="board"){
+      return aiBoardMoveScore(m, player);
+    }
+
+    if(m.kind==="hand"){
+      // Hand storage is valuable when a tile helps later or denies an opponent a dangerous tile.
+      let val = 40 + 42 * tv + 10 * ov + handEfficiencyScore(m.tile, player)*10;
+      if(m.source==="pool") val += 190 + 16 * tv + 6 * ov + tileDangerToOpponents(m.tile,player)*9;
+      if(m.source==="deck") val += 35;
+      if(m.openingDelay){
+        const handCount = state.hands[player].filter(Boolean).length;
+        val += handCount < 3 ? 180 : -70;
+      }
+      // Avoid stuffing weak tiles into hand if a board move is available.
+      if(tv<18 && ov>tv) val -= 95;
+      return val;
+    }
+
+    if(m.kind==="pool"){
+      // Pooling from deck is a rejection/redraw action during the dump run.
+      // Dump limit equals open pool slots at run start.
+      let val = 5 + 9 * tv - 34 * ov - tileDangerToOpponents(m.tile,player)*8;
+      if(m.source==="deck"){
+        val += 105;                 // value of seeing the next deck tile
+        val -= tv*18;               // don't dump useful own tiles
+        if(!canAIDumpDeckToPool()) val -= 9999;
+        if(deckDumpRemaining()<=1) val -= 20; // final allowed dump commits next deck card as keep-card
+      }
+      if(tileDangerToOpponents(m.tile,player)>30) val -= 210;
+      return val;
+    }
+
+    return 0;
+  }
+
+  const level=(state.aiLevel && state.aiLevel[player]) || "Expert";
+  function adjustedScore(m){
+    const base=score(m);
+    if(level==="Beginner"){
+      return Math.random()*90 + tilePlayerValue(m.tile,player)*4 + (m.kind==="board"?15:0);
+    }
+    if(level==="Intermediate"){
+      return base*0.65 + tilePlayerValue(m.tile,player)*16 + (m.kind==="board"?65:0);
+    }
+    if(level==="Pro"){
+      let extra=0;
+      if(m.kind==="board"){
+        const sim=simulateBoardMoveScore(m,player);
+        extra += Math.max(0,sim.ownGain)*520;
+        extra += Math.max(0,sim.oppLoss)*420;
+        extra -= Math.max(0,sim.oppGain)*820;
+        extra += directScoringContactValueForMove(m,player)*1300;
+        extra += directScoringContactCountForMove(m,player)*390;
+        extra -= directOpponentScoringContactValueForMove(m,player).value*760;
+        extra += moveFutureGrowthPotential(m,player)*85;
+        extra += tacticalForkPotential(m,player)*125;
+        extra -= opponentBestReplyThreatAfterMove(m,player)*160;
+      } else if(m.kind==="hand"){
+        extra += tilePlayerValue(m.tile,player)*32 + tileDangerToOpponents(m.tile,player)*16;
+        if(m.source==="pool") extra += 130;
+      } else if(m.kind==="pool"){
+        extra -= tileDangerToOpponents(m.tile,player)*36;
+        if(m.source==="deck"){
+          extra += 110 - tilePlayerValue(m.tile,player)*22;
+        }
+      }
+      return base + extra;
+    }
+    return base; // Expert
+  }
+
+  const scored=moves.map(m=>({m,score:adjustedScore(m)}));
+  scored.sort((a,b)=>{
+    const diff=b.score-a.score;
+    return Math.abs(diff)<0.001 ? Math.random()-0.5 : diff;
+  });
+  return scored[0].m;
+}
+function aiBonusFromHand(player){
+  return aiBestHandBoardMove(player);
+}
+async function runAI(){
+  const player=currentPlayer();
+  if(state.paused || aiRunning || isPlayerHuman(player) || state.gameOver || state.winner) return;
+  aiRunning=true;
+  const runToken=aiRunToken;
+
+  await delay(450);
+  if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+  ensureDeckDumpRunMayStart();
+  const move=aiChooseMove(player);
+
+  if(!move){
+    if(maybeEndGame()){ aiRunning=false; return; }
+    advanceTurn();
+    commitHistory();
+    renderAll();
+    if(isCurrentPlayerHuman()){
+      const msg = isOpeningTurn("red") ? "Red's turn. You may wait and build your hand, or start placing tiles from hand onto the board." : "Red's turn. Place on any legal hex; occupied hexes may be overwritten if the displaced tile fits in pool.";
+      setStatus(msg);
+    } else { aiRunning=false; maybeAutoRunAI(); }
+    return;
+  }
+
+  const sourceFlash = aiSourceFlashFromMove(move, player);
+  if(sourceFlash){
+    setAIFlash(sourceFlash);
+    setStatus(`${cap(player)} selects a tile...`);
+    await delay(750);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+    clearAIFlash();
+    await delay(250);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+  }
+
+  const tile=drawFromSpecificSource(move);
+  removeFromSource(move);
+
+  if(move.kind==="board"){
+    setStatus(`${cap(player)} places a tile${move.rotation ? " rotated "+(move.rotation*60)+"°" : ""}...`);
+    await delay(250);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+    const beforeScores=scoreSnapshot();
+    const beforeTiles=scoringTileSnapshot();
+    const overwrittenTile=state.board[`${move.q},${move.r}`] ? clone(state.board[`${move.q},${move.r}`].tile) : null;
+    placeBoardTileWithOverwrite(tile,move.q,move.r,move.source);
+    state.lastPlaced={q:move.q,r:move.r};
+    triggerScoreDelta(beforeScores,beforeTiles);
+    recordTrainingMove({player,action:"board",source:move.source,destination:"board",q:move.q,r:move.r,tile,rotation:move.rotation||0,overwrittenTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+    setMoveFlash({kind:"board",player,q:move.q,r:move.r});
+    setAIFlash(aiPlacementFlash(move.q, move.r, player));
+    renderAll();
+    await delay(850);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+    clearAIFlash();
+
+    if(move.opening){
+      state.openingBoardPlacementsThisTurn[player] = (state.openingBoardPlacementsThisTurn[player] || 0) + 1;
+
+      while(state.hands[player].filter(Boolean).length > 0 && state.openingBoardPlacementsThisTurn[player] < 3){
+        await delay(450);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+        const follow = aiBestHandBoardMove(player);
+        if(!follow) break;
+
+        setAIFlash({kind:"hand", player, index:follow.index});
+        setStatus(`${cap(player)} selects another hand tile...`);
+        await delay(700);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+        clearAIFlash();
+        await delay(200);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+
+        const beforeScores=scoreSnapshot();
+        const beforeTiles=scoringTileSnapshot();
+        const overwrittenTile=state.board[`${follow.q},${follow.r}`] ? clone(state.board[`${follow.q},${follow.r}`].tile) : null;
+        const ftile = clone(follow.tile);
+        state.hands[player][follow.index] = null;
+        placeBoardTileWithOverwrite(ftile,follow.q,follow.r,"hand");
+        state.lastPlaced = {q:follow.q, r:follow.r};
+        triggerScoreDelta(beforeScores,beforeTiles);
+        recordTrainingMove({player,action:"board",source:"hand",destination:"board",q:follow.q,r:follow.r,tile:ftile,rotation:follow.rotation||0,overwrittenTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+        setMoveFlash({kind:"board",player,q:follow.q,r:follow.r});
+        state.openingBoardPlacementsThisTurn[player]++;
+
+        setAIFlash(aiPlacementFlash(follow.q, follow.r, player));
+        setStatus(`${cap(player)} places another tile${follow.rotation ? " rotated "+(follow.rotation*60)+"°" : ""}...`);
+        renderAll();
+        await delay(800);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+        clearAIFlash();
+      }
+
+      state.openingPlaced[player] = true;
+      state.openingBoardPlacementsThisTurn[player] = 0;
+    } else {
+      state.placementsThisTurn=1;
+      state.firstPlacedSource=move.source;
+      if(move.source==="hand"){
+        while(state.placementsThisTurn < 3 && state.hands[player].filter(Boolean).length > 0){
+          const bonus=aiBonusFromHand(player);
+          if(!bonus) break;
+
+          await delay(450);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+          setAIFlash({kind:"hand", player, index:bonus.index});
+          setStatus(`${cap(player)} selects bonus hand tile...`);
+          await delay(700);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+          clearAIFlash();
+          await delay(200);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+
+          const beforeScores=scoreSnapshot();
+          const beforeTiles=scoringTileSnapshot();
+          const overwrittenTile=state.board[`${bonus.q},${bonus.r}`] ? clone(state.board[`${bonus.q},${bonus.r}`].tile) : null;
+          const btile=clone(bonus.tile);
+          state.hands[player][bonus.index]=null;
+          placeBoardTileWithOverwrite(btile,bonus.q,bonus.r,"hand");
+          state.placementsThisTurn++;
+          state.lastPlaced={q:bonus.q,r:bonus.r};
+          triggerScoreDelta(beforeScores,beforeTiles);
+          recordTrainingMove({player,action:"board",source:"hand",destination:"board",q:bonus.q,r:bonus.r,tile:btile,rotation:bonus.rotation||0,overwrittenTile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+
+          setAIFlash(aiPlacementFlash(bonus.q, bonus.r, player));
+          setStatus(`${cap(player)} places bonus tile${bonus.rotation ? " rotated "+(bonus.rotation*60)+"°" : ""}...`);
+          renderAll();
+          await delay(800);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+          clearAIFlash();
+        }
+      }
+    }
+  } else if(move.kind==="hand"){
+    const beforeScores=compactScores();
+    state.hands[player][move.handIndex]=clone(tile);
+    recordTrainingMove({player,action:"store",source:move.source,destination:"hand",handIndex:move.handIndex,tile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+    setMoveFlash({kind:"hand",player,index:move.handIndex});
+    triggerHandGlow(player, move.handIndex);
+    setAIFlash({kind:"hand", player, index:move.handIndex});
+    setStatus(`${cap(player)} stores tile in hand.`);
+    await delay(850);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+    clearAIFlash();
+  } else if(move.kind==="pool"){
+    const beforeScores=compactScores();
+    state.pool[move.poolIndex]=clone(tile);
+    recordTrainingMove({player,action:"pool",source:move.source,destination:"pool",poolIndex:move.poolIndex,tile,scoresBefore:beforeScores,scoresAfter:compactScores()});
+    setMoveFlash({kind:"pool",player,index:move.poolIndex});
+    setAIFlash({kind:"pool", player, index:move.poolIndex});
+    setStatus(move.source==="deck" ? `${cap(player)} dumps deck tile to pool and may draw again.` : `${cap(player)} places tile in pool.`);
+    await delay(850);
+    if(runToken!==aiRunToken || state.paused){ aiRunning=false; return; }
+    clearAIFlash();
+
+    if(move.source==="deck"){
+      state.deckDumpRunActive=true;
+      state.deckDumpsThisTurn=(state.deckDumpsThisTurn||0)+1;
+      state.selected=null;
+      renderAll();
+      if(state.deck.length){
+        aiRunning=false;
+        maybeAutoRunAI();
+        return;
+      }
+    }
+  }
+
+  state.selected=null;
+  state.placementsThisTurn=0;
+  state.firstPlacedSource=null;
+  state.lastPlaced=null;
+
+  if(maybeEndGame()){ aiRunning=false; return; }
+
+  advanceTurn();
+  commitHistory();
+  renderAll();
+  if(isCurrentPlayerHuman()){
+    const msg = isOpeningTurn("red") ? "Red's turn. You may wait and build your hand, or start placing tiles from hand onto the board." : "Red's turn. Place on any legal hex; occupied hexes may be overwritten if the displaced tile fits in pool.";
+    setStatus(msg);
+    aiRunning=false;
+  } else {
+    aiRunning=false;
+    maybeAutoRunAI();
+  }
+}
+function renderDeck(){
+  const svg=document.getElementById("deckSvg");
+  svg.classList.remove("aiFlash","aiPlaced");
+  svg.innerHTML="";
+  const showSelected=state.selected && state.selected.source==="deck";
+  const revealDeckFace = showSelected && currentPlayer()==="red";
+  const selectedTile = revealDeckFace ? state.selected.tile : null;
+  if(state.aiFlash && state.aiFlash.kind==="deck") svg.classList.add("aiFlash");
+  const deckFlash=!!(state.aiFlash && state.aiFlash.kind==="deck");
+  drawTile(svg, selectedTile, 48,47,22, {
+    question:!revealDeckFace,
+    selected:!!revealDeckFace || deckFlash,
+    selectedPlayer:deckFlash ? state.aiFlash.player : currentPlayer(),
+    glowPlayer:(revealDeckFace || deckFlash) ? (deckFlash ? state.aiFlash.player : currentPlayer()) : null,
+    click:()=>{
+      if(!isCurrentPlayerHuman()) return;
+      showSelected
+        ? selectOrRotate({source:"deck",index:-1,tile:state.selected.tile,forcedBoard:state.selected.forcedBoard})
+        : tryDrawDeck();
+    }
+  });
+}
+function renderPool(){
+  const wrap=document.getElementById("poolWrap");
+  wrap.innerHTML="";
+  state.pool.forEach((tile,idx)=>{
+    const displayTile = (state.selected && state.selected.source==="pool" && state.selected.index===idx)
+      ? state.selected.tile
+      : tile;
+    const svg=svgel("svg",{viewBox:"0 0 44 48","class":"poolTileSvg"});
+    if(state.aiFlash && state.aiFlash.kind==="pool" && state.aiFlash.index===idx) svg.classList.add("aiFlash");
+    svg.style.cursor = isCurrentPlayerHuman() ? "pointer" : "default";
+
+    if(tile){
+      svg.addEventListener("click", ()=>{
+        if(!isCurrentPlayerHuman()) return;
+        if(isOpeningTurn("red")){showIllegal(); setStatus("Opening turn: place from hand or draw/store."); return;}
+        if(state.placementsThisTurn>=1){
+          showIllegal();
+          setStatus("After your first placement, only 1 additional tile from hand is allowed.");
+          return;
+        }
+        selectOrRotate({source:"pool",index:idx,tile:displayTile});
+      });
+    } else {
+      svg.addEventListener("click", ()=>{
+        if(!isCurrentPlayerHuman()) return;
+        moveSelectedToPool(idx);
+      });
+    }
+
+    const poolSelected=!!(state.selected&&state.selected.source==="pool"&&state.selected.index===idx);
+    const poolAIFlash=!!(state.aiFlash&&state.aiFlash.kind==="pool"&&state.aiFlash.index===idx);
+    const poolMoveFlash=!!(state.moveFlash&&state.moveFlash.kind==="pool"&&state.moveFlash.index===idx);
+    const poolGlowPlayer = poolMoveFlash ? state.moveFlash.player : (poolAIFlash ? state.aiFlash.player : (poolSelected ? currentPlayer() : null));
+    drawTile(svg,displayTile,22,24,17.5,{
+      slot:tile===null,
+      selected:poolSelected||poolAIFlash||poolMoveFlash,
+      selectedPlayer:poolGlowPlayer || currentPlayer(),
+      glowPlayer:poolGlowPlayer
+    });
+    wrap.appendChild(svg);
+  });
+}
+function renderHands(){
+  for(const player of ["blue","red","green"]){
+    const panel=document.getElementById(player+"Panel");
+    panel.classList.toggle("activeTurn", player===currentPlayer() && !state.gameOver && !state.winner);
+    panel.innerHTML="";
+    panel.appendChild(makeAILevelBadge(player));
+    const active=player===currentPlayer();
+
+    const svg = svgel("svg", {viewBox:"0 0 110 108", "class":"handClusterSvg"});
+    panel.appendChild(svg);
+
+    // Current captured-area score: number only, centered at bottom of score box.
+    const areaScore = totalScoreForPlayer(player);
+    const scoreBg = svgel("rect", {x:31, y:84, width:48, height:23, rx:7, ry:7, fill:"rgba(255,255,255,0.94)", stroke:"#000", "stroke-width":"0.9"});
+    scoreBg.style.pointerEvents = "none";
+    svg.appendChild(scoreBg);
+    const scoreText = svgel("text", {x:55, y:102, "text-anchor":"middle", "font-size":"21", "font-weight":"900", fill:"#111"});
+    scoreText.textContent = String(areaScore);
+    scoreText.style.pointerEvents = "none";
+    svg.appendChild(scoreText);
+
+    const s = 19;
+    const slots = [
+      {x:55, y:25},
+      {x:34, y:60},
+      {x:76, y:60},
+    ];
+
+    [0,1,2].forEach((idx)=>{
+      const baseTile = state.hands[player][idx];
+      const tile = (player==="red" && state.selected && state.selected.source==="hand" && state.selected.index===idx)
+        ? state.selected.tile
+        : baseTile;
+
+      const hiddenSlot=idx>=1;
+      const viewerOwnHand = player==="red";
+      // Red sees all Red hand tiles. Opponent top slot is public. Opponent lower slots are hidden question-mark slots.
+      const visibleTile = viewerOwnHand ? tile : (hiddenSlot ? null : tile);
+      const hideOpponentPrivateTile = (!viewerOwnHand && hiddenSlot && baseTile!==null);
+
+      const clickHandler = ()=>{
+        if(player!=="red" || !isCurrentPlayerHuman()) return;
+        if(baseTile) selectOrRotate({source:"hand",index:idx,tile});
+        else moveSelectedToHand(idx);
+      };
+
+      const handSelected=!!(state.selected&&state.selected.source==="hand"&&state.selected.index===idx&&player==="red");
+      const handAIFlash=!!(state.aiFlash&&state.aiFlash.kind==="hand"&&state.aiFlash.player===player&&state.aiFlash.index===idx);
+      const handMoveFlash=!!(state.moveFlash&&state.moveFlash.kind==="hand"&&state.moveFlash.player===player&&state.moveFlash.index===idx);
+      drawTile(svg, visibleTile, slots[idx].x, slots[idx].y, s, {
+        slot:baseTile===null,
+        hiddenSlot:hiddenSlot&&baseTile===null,
+        hiddenFrame:hideOpponentPrivateTile,
+        hidden:hideOpponentPrivateTile,
+        selected:handSelected||handAIFlash||handMoveFlash,
+        selectedPlayer:player,
+        glowPlayer:(handSelected||handAIFlash||handMoveFlash) ? player : null,
+        click:clickHandler
+      });
+
+      const hit=svgel("circle",{
+        cx:slots[idx].x,
+        cy:slots[idx].y,
+        r:25,
+        fill:"transparent"
+      });
+      hit.style.cursor = (player==="red" && isCurrentPlayerHuman()) ? "pointer" : "default";
+      hit.addEventListener("click", clickHandler);
+      svg.appendChild(hit);
+
+      if(state.slotGlow[player]===idx){
+        const glow=svgel("polygon",{
+          points:hexPoints(slots[idx].x,slots[idx].y,s+2),
+          fill:"none",
+          stroke:playerStrokeColor(player),
+          "stroke-width":"3",
+          opacity:"0.95"
+        });
+        svg.appendChild(glow);
+      }
+    });
+  }
+}
+
+
+
+
+function colorSectionComponentsForPlayer(player){
+  const cells=[];
+  const idx=new Map();
+
+  for(const key of Object.keys(state.board)){
+    if(key==="0,0") continue;
+    const [q,r]=key.split(",").map(Number);
+    const tile=state.board[key].tile;
+    if(!tile || !tile.sides) continue;
+
+    for(let side=0; side<6; side++){
+      if(tile.sides[side]!==player) continue;
+      const id=`${key}|${side}`;
+      idx.set(id,cells.length);
+      cells.push({id,key,q,r,side,tile});
+    }
+  }
+
+  const adj=Array.from({length:cells.length},()=>[]);
+  const externalLink=Array.from({length:cells.length},()=>false);
+
+  function add(a,b,external=false){
+    if(a<0 || b<0) return;
+    adj[a].push(b);
+    adj[b].push(a);
+    if(external){ externalLink[a]=true; externalLink[b]=true; }
+  }
+
+  for(const cell of cells){
+    const a=idx.get(cell.id);
+
+    // Internal same-color section adjacency inside a tile. Boundaries between same-color
+    // wedges disappear; boundaries against different colors remain visible.
+    for(const nbSide of [(cell.side+5)%6,(cell.side+1)%6]){
+      const b=idx.get(`${cell.key}|${nbSide}`);
+      if(b!==undefined) add(a,b,false);
+    }
+
+    // External link across this visual side's actual board neighbor.
+    const nb=neighborForSide(cell.q,cell.r,cell.side);
+    if(!nb || isCenterVoid(nb.q,nb.r)) continue;
+    const nKey=`${nb.q},${nb.r}`;
+    const neighbor=state.board[nKey];
+    if(!neighbor) continue;
+
+    const theirSide=sharedSideIndex(nb.q,nb.r,cell.q,cell.r);
+    const b=idx.get(`${nKey}|${theirSide}`);
+    if(b!==undefined && scoringLink(player,cell.tile,cell.side,neighbor.tile,theirSide)){
+      add(a,b,true);
+    }
+  }
+
+  const seen=new Set();
+  const comps=[];
+
+  for(let i=0;i<cells.length;i++){
+    if(seen.has(i)) continue;
+    const stack=[i];
+    const comp=[];
+    seen.add(i);
+
+    while(stack.length){
+      const cur=stack.pop();
+      comp.push(cur);
+      for(const nxt of adj[cur]){
+        if(!seen.has(nxt)){
+          seen.add(nxt);
+          stack.push(nxt);
+        }
+      }
+    }
+
+    const tileKeys=new Set(comp.map(n=>cells[n].key));
+    const hasExternal=comp.some(n=>externalLink[n]);
+
+    // Captured/scoring color regions require a real cross-tile link.
+    if(tileKeys.size>=2 && hasExternal){
+      comps.push({player, cellIndexes:comp, cells:comp.map(n=>cells[n])});
+    }
+  }
+
+  return comps;
+}
+
+function allScoringComponents(){
+  return PLAYERS.flatMap(player=>colorSectionComponentsForPlayer(player));
+}
+
+function neighborForSide(q,r,side){
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=q+dq, nr=r+dr;
+    if(sharedSideIndex(q,r,nq,nr)===side){
+      return {q:nq, r:nr};
+    }
+  }
+  return null;
+}
+
+function tileVertexXY(q,r,vertex,size=BOARD_HEX_SIZE){
+  const [x,y]=axialToXY(q,r,size);
+  const rad=Math.PI*(vertex*60)/180;
+  return {x:x+size*Math.cos(rad), y:y+size*Math.sin(rad)};
+}
+
+function tileCenterXY(q,r,size=BOARD_HEX_SIZE){
+  const [x,y]=axialToXY(q,r,size);
+  return {x,y};
+}
+
+function lineKey(a,b){
+  const p1=`${Math.round(a.x*100)/100},${Math.round(a.y*100)/100}`;
+  const p2=`${Math.round(b.x*100)/100},${Math.round(b.y*100)/100}`;
+  return p1<p2 ? `${p1}|${p2}` : `${p2}|${p1}`;
+}
+
+function segmentPointKey(p){
+  return `${Math.round(p.x*100)/100},${Math.round(p.y*100)/100}`;
+}
+
+
+
+function ensureSvgDefs(svg){
+  let defs=svg.querySelector("defs");
+  if(!defs){
+    defs=svgel("defs");
+    svg.insertBefore(defs, svg.firstChild);
+  }
+  return defs;
+}
+
+
+
+function ensureSvgDefs(svg){
+  let defs=svg.querySelector("defs");
+  if(!defs){
+    defs=svgel("defs");
+    svg.insertBefore(defs, svg.firstChild);
+  }
+  return defs;
+}
+
+// CAPTURED_AREA_VISUAL_ONLY_RULE:
+ // Linked/captured areas are scoring + visual overlays only.
+ // They do not change the underlying individual tiles, and they do not transfer
+ // protection, black-edge behavior, gray behavior, overwrite immunity, or any other trait.
+function drawCapturedAreaOverlay(svg, comp){
+  const player=comp.player;
+  const fillColor=COLORS[player];
+  const light=playerHighlighterColor(player);
+  const cellSet=new Set(comp.cells.map(c=>c.id));
+  const boundarySegments=[];
+  const seamSegments=[];
+  const seamSeen=new Set();
+
+  function sameComp(id){ return cellSet.has(id); }
+  function addBoundary(a,b,isGridLine=false){ boundarySegments.push({a,b,isGridLine}); }
+  function addInternalSeam(a,b){
+    const k=lineKey(a,b);
+    if(seamSeen.has(k)) return;
+    seamSeen.add(k);
+    seamSegments.push({a,b});
+  }
+
+  const clipId=`capClip_${player}_${Math.random().toString(36).slice(2)}`;
+  const defs=ensureSvgDefs(svg);
+  const clip=svgel("clipPath",{id:clipId, clipPathUnits:"userSpaceOnUse"});
+
+  function addCapturedOverlayElement(el){
+    el.setAttribute("pointer-events","none");
+    el.style.pointerEvents="none";
+    svg.appendChild(el);
+    return el;
+  }
+
+  // First repaint the captured region itself. This covers all prior tile seam lines
+  // inside the linked area, so the visible shape behaves like one expanding blob.
+  for(const cell of comp.cells){
+    const center=tileCenterXY(cell.q,cell.r,BOARD_HEX_SIZE);
+    const a=tileVertexXY(cell.q,cell.r,cell.side,BOARD_HEX_SIZE);
+    const b=tileVertexXY(cell.q,cell.r,(cell.side+1)%6,BOARD_HEX_SIZE);
+    const pts=`${center.x},${center.y} ${a.x},${a.y} ${b.x},${b.y}`;
+
+    clip.appendChild(svgel("polygon",{points:pts}));
+
+    const boardTile = state.board[cell.key]?.tile;
+    if(!(boardTile && boardTile.starter===true && boardTile.owner)){
+      // Captured/linked area is visual scoring highlight only.
+      // It does NOT merge tiles or transfer traits/protection/black/gray behavior.
+      // Keep it translucent so the underlying individual tile properties remain visible.
+      addCapturedOverlayElement(svgel("polygon",{
+        points:pts,
+        fill:light,
+        stroke:"none",
+        opacity:"0.16"
+      }));
+    }
+  }
+  defs.appendChild(clip);
+
+  // Build only the current outer boundary of the whole linked color area.
+  for(const cell of comp.cells){
+    const key=cell.key;
+    const side=cell.side;
+
+    // Outer edge boundary: only if this exact visual side does not continue
+    // into another cell of the same captured component.
+    const nb=neighborForSide(cell.q,cell.r,side);
+    let externalContinues=false;
+
+    if(nb && !isCenterVoid(nb.q,nb.r)){
+      const nKey=`${nb.q},${nb.r}`;
+      const neighbor=state.board[nKey];
+      if(neighbor){
+        const theirSide=sharedSideIndex(nb.q,nb.r,cell.q,cell.r);
+        externalContinues = sameComp(`${nKey}|${theirSide}`);
+      }
+    }
+
+    const edgeA=tileVertexXY(cell.q,cell.r,side,BOARD_HEX_SIZE);
+    const edgeB=tileVertexXY(cell.q,cell.r,(side+1)%6,BOARD_HEX_SIZE);
+
+    if(externalContinues){
+      addInternalSeam(edgeA, edgeB);
+    } else {
+      addBoundary(edgeA, edgeB, true);
+    }
+
+    // Internal split boundaries inside bicolor/tricolor tiles are perimeter only
+    // when the adjacent wedge is not part of this same captured region.
+    const center=tileCenterXY(cell.q,cell.r,BOARD_HEX_SIZE);
+
+    const prev=(side+5)%6;
+    if(!sameComp(`${key}|${prev}`)){
+      addBoundary(center, tileVertexXY(cell.q,cell.r,side,BOARD_HEX_SIZE), false);
+    }
+
+    const next=(side+1)%6;
+    if(!sameComp(`${key}|${next}`)){
+      addBoundary(center, tileVertexXY(cell.q,cell.r,(side+1)%6,BOARD_HEX_SIZE), false);
+    }
+  }
+
+  // Chain boundary segments into continuous paths.
+  for(const s of seamSegments){
+    // More visible internal board-grid line inside the linked area:
+    // thicker, darker, and still slightly tinted by the area color.
+    addCapturedOverlayElement(svgel("line",{
+      x1:s.a.x,y1:s.a.y,x2:s.b.x,y2:s.b.y,
+      stroke:playerNearBlackGridColor(player),
+      "stroke-width":"1.9",
+      "stroke-linecap":"round",
+      opacity:"0.9"
+    }));
+    // Thin lighter color highlight on the same gridline.
+    addCapturedOverlayElement(svgel("line",{
+      x1:s.a.x,y1:s.a.y,x2:s.b.x,y2:s.b.y,
+      stroke:playerLightColor(player),
+      "stroke-width":"0.5",
+      "stroke-linecap":"round",
+      opacity:"0.55"
+    }));
+  }
+
+  const edges=boundarySegments.map((s,i)=>({
+    i,
+    a:s.a,
+    b:s.b,
+    isGridLine:!!s.isGridLine,
+    ak:segmentPointKey(s.a),
+    bk:segmentPointKey(s.b),
+    used:false
+  }));
+
+  const byPoint=new Map();
+  for(const e of edges){
+    if(!byPoint.has(e.ak)) byPoint.set(e.ak,[]);
+    if(!byPoint.has(e.bk)) byPoint.set(e.bk,[]);
+    byPoint.get(e.ak).push(e);
+    byPoint.get(e.bk).push(e);
+  }
+
+  function otherKey(e,k){ return e.ak===k ? e.bk : e.ak; }
+  function pointForKey(k){
+    const e=(byPoint.get(k)||[])[0];
+    if(!e) return null;
+    return e.ak===k ? e.a : e.b;
+  }
+
+  for(const first of edges){
+    if(first.used) continue;
+
+    const pts=[first.a, first.b];
+    first.used=true;
+    let currentKey=first.bk;
+    let guard=0;
+
+    while(guard++<500){
+      const candidates=(byPoint.get(currentKey)||[]).filter(e=>!e.used);
+      if(!candidates.length) break;
+
+      const next=candidates[0];
+      next.used=true;
+      const nextKey=otherKey(next,currentKey);
+      const p=pointForKey(nextKey);
+      if(p) pts.push(p);
+      currentKey=nextKey;
+
+      if(currentKey===segmentPointKey(pts[0])) break;
+    }
+
+    if(pts.length>=2){
+      let d=`M ${pts[0].x} ${pts[0].y}`;
+      for(let i=1;i<pts.length;i++) d+=` L ${pts[i].x} ${pts[i].y}`;
+      if(segmentPointKey(pts[0])===segmentPointKey(pts[pts.length-1])) d+=" Z";
+
+      addCapturedOverlayElement(svgel("path",{
+        d,
+        fill:"none",
+        stroke:light,
+        "stroke-width":"5.4",
+        "stroke-linejoin":"round",
+        "stroke-linecap":"round",
+        opacity:"0.56",
+        "clip-path":`url(#${clipId})`
+      }));
+    }
+  }
+
+  // Re-draw true board hex gridlines where the translucent perimeter sits over them,
+  // so the grid remains visible as if seen through the outline.
+  const boundarySeen=new Set();
+  for(const s of boundarySegments){
+    if(!s.isGridLine) continue;
+    const k=lineKey(s.a,s.b);
+    if(boundarySeen.has(k)) continue;
+    boundarySeen.add(k);
+    addCapturedOverlayElement(svgel("line",{
+      x1:s.a.x,y1:s.a.y,x2:s.b.x,y2:s.b.y,
+      stroke:playerNearBlackGridColor(player),
+      "stroke-width":"1.25",
+      "stroke-linecap":"round",
+      opacity:"0.58"
+    }));
+    addCapturedOverlayElement(svgel("line",{
+      x1:s.a.x,y1:s.a.y,x2:s.b.x,y2:s.b.y,
+      stroke:playerLightColor(player),
+      "stroke-width":"0.38",
+      "stroke-linecap":"round",
+      opacity:"0.36"
+    }));
+  }
+}
+
+function vertexBonusMarkersForPlayer(player){
+  const vertices = new Map();
+  for(const key of Object.keys(state.board)){
+    if(key==="0,0") continue;
+    const [q,r]=key.split(",").map(Number);
+    const tile=state.board[key].tile;
+    const [cx,cy]=axialToXY(q,r,BOARD_HEX_SIZE);
+    for(let i=0;i<6;i++){
+      const a=Math.PI*(i*60)/180;
+      const vx=cx + BOARD_HEX_SIZE*Math.cos(a);
+      const vy=cy + BOARD_HEX_SIZE*Math.sin(a);
+      const vkey=`${Math.round(vx*1000)/1000},${Math.round(vy*1000)/1000}`;
+      if(!vertices.has(vkey)) vertices.set(vkey,{x:vx,y:vy,edges:[]});
+      vertices.get(vkey).edges.push(tile.sides[i]);
+      vertices.get(vkey).edges.push(tile.sides[(i+5)%6]);
+    }
+  }
+  return Array.from(vertices.values()).filter(v=>v.edges.length===6 && v.edges.every(c=>c===player));
+}
+
+function drawVertexBonusMarker(svg, player, x, y){
+  const dark=playerDarkColor(player);
+  const light=playerLightColor(player);
+  svg.appendChild(svgel("circle",{
+    cx:x, cy:y, r:7.2,
+    fill:"rgba(255,255,255,0.9)",
+    stroke:light,
+    "stroke-width":"3"
+  }));
+  for(const angle of [0,60,120]){
+    const rad=Math.PI*angle/180;
+    const dx=Math.cos(rad)*6.1;
+    const dy=Math.sin(rad)*6.1;
+    svg.appendChild(svgel("line",{
+      x1:x-dx,y1:y-dy,x2:x+dx,y2:y+dy,
+      stroke:dark,
+      "stroke-width":"2.2",
+      "stroke-linecap":"round"
+    }));
+  }
+}
+
+function renderCapturedAreaOverlays(svg){
+  for(const comp of allScoringComponents()){
+    drawCapturedAreaOverlay(svg, comp);
+  }
+  // Vertex bonus remains scored, but no longer has a visual marker.
+}
+
+function linkedScoringSidesForBoardCell(q,r,tile){
+  const sides=[];
+  if(!tile) return sides;
+
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=q+dq, nr=r+dr;
+    if(isCenterVoid(nq,nr)) continue;
+
+    const neighbor=state.board[`${nq},${nr}`];
+    if(!neighbor) continue;
+
+    const mySide=sharedSideIndex(q,r,nq,nr);
+    const theirSide=sharedSideIndex(nq,nr,q,r);
+
+    for(const player of PLAYERS){
+      if(scoringLink(player,tile,mySide,neighbor.tile,theirSide)){
+        sides.push(mySide);
+        break;
+      }
+    }
+  }
+
+  return sides;
+}
+
+
+function blackBlockedDirectionsForCell(q,r){
+  const dirs=[];
+  if(state.board[`${q},${r}`]) return dirs;
+  for(const [dq,dr] of NEIGHBORS){
+    const nq=q+dq, nr=r+dr;
+    if(isCenterVoid(nq,nr)) continue;
+    const neighbor=state.board[`${nq},${nr}`];
+    if(!neighbor || !neighbor.tile) continue;
+    const theirSide=sharedSideIndex(nq,nr,q,r);
+    if(neighbor.tile.sides[theirSide]==="black"){
+      dirs.push(sharedSideIndex(q,r,nq,nr));
+    }
+  }
+  return dirs;
+}
+
+function ensureBlackBlockGradient(svg){
+  const defs=ensureSvgDefs(svg);
+  if(!svg.querySelector("#blackBlockGradient")){
+    const grad=svgel("radialGradient",{id:"blackBlockGradient",cx:"50%",cy:"50%",r:"55%"});
+    grad.appendChild(svgel("stop",{offset:"0%","stop-color":"rgba(25,15,7,0.58)"}));
+    grad.appendChild(svgel("stop",{offset:"45%","stop-color":"rgba(72,42,20,0.34)"}));
+    grad.appendChild(svgel("stop",{offset:"100%","stop-color":"rgba(0,0,0,0)"}));
+    defs.appendChild(grad);
+  }
+}
+
+function drawBlackBlockedSpace(svg,x,y,size,dirs){
+  if(!dirs || !dirs.length) return;
+  const g=svgel("g");
+  g.style.pointerEvents="none";
+
+  // Hexagonal hazy gradient: stacked translucent hexes instead of a circle.
+  const layers=[
+    {scale:0.74, fill:"rgba(18,10,5,0.18)"},
+    {scale:0.58, fill:"rgba(46,25,10,0.24)"},
+    {scale:0.42, fill:"rgba(78,42,18,0.28)"},
+    {scale:0.27, fill:"rgba(12,8,5,0.38)"}
+  ];
+
+  for(const layer of layers){
+    g.appendChild(svgel("polygon",{
+      points:hexPoints(x,y,size*layer.scale),
+      fill:layer.fill,
+      stroke:"none"
+    }));
+  }
+
+  // Directional hazy wedges pointing toward the black edge(s) that cause the block.
+  for(const side of dirs){
+    const a1=Math.PI*(side*60)/180;
+    const a2=Math.PI*(((side+1)%6)*60)/180;
+    const mid=Math.PI*((side*60)+30)/180;
+
+    const p1={x:x+Math.cos(a1)*size*0.68, y:y+Math.sin(a1)*size*0.68};
+    const p2={x:x+Math.cos(a2)*size*0.68, y:y+Math.sin(a2)*size*0.68};
+    const c1={x:x+Math.cos(mid)*size*0.18, y:y+Math.sin(mid)*size*0.18};
+
+    g.appendChild(svgel("polygon",{
+      points:`${c1.x},${c1.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`,
+      fill:"rgba(20,12,6,0.34)",
+      stroke:"none"
+    }));
+
+    const px=x+Math.cos(mid)*size*0.42;
+    const py=y+Math.sin(mid)*size*0.42;
+    g.appendChild(svgel("polygon",{
+      points:hexPoints(px,py,size*0.15),
+      fill:"rgba(0,0,0,0.34)",
+      stroke:"none"
+    }));
+  }
+
+  // Soft hex outline to clarify the blocked space while keeping it hazy.
+  g.appendChild(svgel("polygon",{
+    points:hexPoints(x,y,size*0.72),
+    fill:"none",
+    stroke:"rgba(42,23,10,0.28)",
+    "stroke-width":"1.2"
+  }));
+
+  svg.appendChild(g);
+}
+
+function drawCenterVoid(svg,x,y,size){
+  // Center remains a no-space/non-playable void, but is displayed as a gray cut jewel.
+  drawJewelTile(svg, {
+    kind:"solid",
+    sides:["gray","gray","gray","gray","gray","gray"],
+    starter:true,
+    owner:"gray"
+  }, x, y, size, {});
+}
+
+
+function drawProtectedAuraCornerTicks(svg,x,y,size,strong=false){
+  const tickLen = size * 0.14;
+  const stroke = strong ? "rgba(255,232,122,0.96)" : "rgba(255,222,118,0.72)";
+  const width = strong ? 1.85 : 1.25;
+
+  const g=svgel("g");
+  g.setAttribute("pointer-events","none");
+  g.style.pointerEvents="none";
+
+  for(let i=0;i<6;i++){
+    const a=Math.PI*(i*60)/180;
+    const prev=Math.PI*(((i+5)%6)*60)/180;
+    const next=Math.PI*(((i+1)%6)*60)/180;
+
+    const vx=x+size*Math.cos(a);
+    const vy=y+size*Math.sin(a);
+
+    // Short bracket arms just inside each hex corner.
+    const p1x=vx + (x+size*Math.cos(prev)-vx)*0.16;
+    const p1y=vy + (y+size*Math.sin(prev)-vy)*0.16;
+    const p2x=vx + (x+size*Math.cos(next)-vx)*0.16;
+    const p2y=vy + (y+size*Math.sin(next)-vy)*0.16;
+
+    const poly=svgel("polyline",{
+      points:`${p1x},${p1y} ${vx},${vy} ${p2x},${p2y}`,
+      fill:"none",
+      stroke,
+      "stroke-width":String(width),
+      "stroke-linecap":"round",
+      "stroke-linejoin":"round",
+      opacity:strong ? "0.98" : "0.82"
+    });
+    g.appendChild(poly);
+  }
+
+  // Small center dot: protected-aura indicator, not ownership/scoring.
+  g.appendChild(svgel("circle",{
+    cx:x,
+    cy:y,
+    r:strong ? size*0.105 : size*0.085,
+    fill:strong ? "rgba(255,228,84,0.94)" : "rgba(255,216,80,0.72)",
+    stroke:"rgba(96,66,0,0.34)",
+    "stroke-width":strong ? "0.9" : "0.6",
+    opacity:strong ? "0.96" : "0.78"
+  }));
+
+  svg.appendChild(g);
+}
+
+function renderProtectedAuraTicks(svg){
+  for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++){
+    for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+      const s=-q-r;
+      if(Math.max(Math.abs(q),Math.abs(r),Math.abs(s))>BOARD_RADIUS) continue;
+      if(isCenterVoid(q,r)) continue;
+
+      if(!isProtectedOverwriteSpace(q,r)) continue;
+
+      const [x,y]=axialToXY(q,r,BOARD_HEX_SIZE);
+      const occupied=!!state.board[`${q},${r}`];
+      const strong=!!(state.selected && state.selected.source==="hand" && occupied);
+
+      drawProtectedAuraCornerTicks(svg,x,y,BOARD_HEX_SIZE-1.9,strong);
+    }
+  }
+}
+
+
+function renderBoard(){
+  const svg=document.getElementById("board"); svg.innerHTML="";
+  for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++){
+    for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+      const s=-q-r; if(Math.max(Math.abs(q),Math.abs(r),Math.abs(s))>BOARD_RADIUS) continue;
+      const [x,y]=axialToXY(q,r,BOARD_HEX_SIZE);
+      if(isCenterVoid(q,r)){
+        drawCenterVoid(svg,x,y,BOARD_HEX_SIZE-1.1);
+        continue;
+      }
+      const occ=state.board[`${q},${r}`];
+      const bonusAllowed=state.firstPlacedSource==="hand";
+      const continuedHandAllowed = (state.placementsThisTurn>=1 && state.placementsThisTurn<3 && state.firstPlacedSource==="hand" && state.selected && state.selected.source==="hand");
+      const placementTurnAllowed = !!(state.selected && !(state.placementsThisTurn>=1 && !continuedHandAllowed));
+      const legal=!!(placementTurnAllowed && isBoardPlacementLegal(currentPlayer(),state.selected.tile,q,r,false,state.selected.source));
+      const baseStroke = occ ? (legal ? playerStrokeColor(currentPlayer()) : "none") : (legal ? playerStrokeColor(currentPlayer()) : "#000");
+      const poly=svgel("polygon",{points:hexPoints(x,y,BOARD_HEX_SIZE),fill:"#fff",stroke:baseStroke,"stroke-width":legal?2.2:1.25});
+      if(legal) applyMoveGlow(poly,currentPlayer());
+      if(state.selected && isCurrentPlayerHuman()){ poly.style.cursor="pointer"; poly.addEventListener("click",()=>placeSelectedOnBoard(q,r)); }
+      svg.appendChild(poly);
+      if(!occ){
+        const blockedDirs=blackBlockedDirectionsForCell(q,r);
+        if(blockedDirs.length) drawBlackBlockedSpace(svg,x,y,BOARD_HEX_SIZE,blockedDirs);
+      }
+      if(occ) drawTile(svg,occ.tile,x,y,BOARD_HEX_SIZE+0.35,{});
+      if(state.scoreFlashTiles && state.scoreFlashTiles.includes(`${q},${r}`)){
+        const scoreFlash=svgel("polygon",{
+          points:hexPoints(x,y,BOARD_HEX_SIZE+2.2),
+          fill:"none",
+          stroke:"#fff7a8",
+          "stroke-width":"4.2"
+        });
+        scoreFlash.classList.add("scoreTileFlash");
+        svg.appendChild(scoreFlash);
+      }
+      if(state.selected && isCurrentPlayerHuman()){
+        const hit=svgel("polygon",{points:hexPoints(x,y,BOARD_HEX_SIZE),fill:"transparent",stroke:"none"});
+        hit.style.cursor="pointer";
+        hit.addEventListener("click",()=>placeSelectedOnBoard(q,r));
+        svg.appendChild(hit);
+      }
+      const boardAIFlash=!!(state.aiFlash && state.aiFlash.kind==="board" && state.aiFlash.q===q && state.aiFlash.r===r);
+      const boardMoveFlash=!!(state.moveFlash && state.moveFlash.kind==="board" && state.moveFlash.q===q && state.moveFlash.r===r);
+      if(boardAIFlash || boardMoveFlash){
+        const flashPlayer=boardMoveFlash ? state.moveFlash.player : (state.aiFlash.player || currentPlayer());
+        const flash=svgel("polygon",{points:hexPoints(x,y,BOARD_HEX_SIZE+1.5),fill:"none",stroke:playerMoveGlowColor(flashPlayer),"stroke-width":"4"});
+        flash.classList.add("aiPlaced");
+        applyMoveGlow(flash, flashPlayer);
+        svg.appendChild(flash);
+      }
+    }
+  }
+  renderCapturedAreaOverlays(svg);
+  renderProtectedAuraTicks(svg);
+}
+function renderTop(){
+  normalizeTurnState();
+  const playerLine=document.getElementById("playerTurnLabel");
+  const turnLine=document.getElementById("turnNumberLabel");
+  if(state.gameOver){
+    playerLine.textContent = state.winner==="tie" ? "TIE GAME" : `${cap(state.winner).toUpperCase()} WON`;
+    turnLine.textContent = `TURN ${state.turnNumber || 1}`;
+  } else {
+    playerLine.textContent = `${cap(currentPlayer()).toUpperCase()}'S TURN`;
+    turnLine.textContent = `TURN ${state.turnNumber || 1}`;
+  }
+  const nt=document.getElementById("nextTurnBtn");
+  if(nt) nt.disabled=!canUseNextTurn();
+  const sp=document.getElementById("speedSelect");
+  if(sp) sp.value=state.simSpeed || "Normal";
+  updatePauseButton();
+  // Detailed turn prompts are shown in the bottom status bar, not duplicated here.
+}
+
+function renderAll(){ renderTop(); renderDeck(); renderPool(); renderBoard(); renderHands(); renderScorePopup(); }
+document.getElementById("undoBtn").addEventListener("click",undoMove);
+document.getElementById("pauseBtn").addEventListener("click",togglePause);
+document.getElementById("redoBtn").addEventListener("click",redoMove);
+document.getElementById("nextTurnBtn").addEventListener("click",nextTurnNow);
+document.getElementById("exportDataBtn").addEventListener("click",exportTrainingData);
+document.getElementById("speedSelect").addEventListener("change",(e)=>{
+  setSimSpeed(e.target.value);
+  commitHistory();
+  setStatus(`AI speed set to ${e.target.value}.`);
+  maybeAutoRunAI();
+});
+document.getElementById("newGameBtn").addEventListener("click",()=>{
+  cancelPendingEndTurn();
+  aiRunToken++;
+  state=createState();
+  scorePopupRenderedId=0;
+  state.paused=false;
+  renderAll();
+  resetHistory();
+  setSimSpeed(state.simSpeed || "Normal");
+  setStatus("Red's turn. Choose a tile from deck, hand, or pool.");
+  maybeAutoRunAI();
+});
+
+renderAll();
+setSimSpeed(state.simSpeed || "Normal");
+resetHistory();
+setStatus("Red's turn. Choose a tile from deck, hand, or pool.");
+maybeAutoRunAI();
+</script>
+</body>
+</html>
