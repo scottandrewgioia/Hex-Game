@@ -11,15 +11,12 @@
  * move only in specific situations drawn from arena and human-game evidence:
  *   R1a take a game-ending pass when sole leader;
  *   R1b never end the game by passing unless sole leader (tied first = no win);
- *   R2  (DISABLED in v3: harmful in the v1 arena, 3/30 wins vs F8 10/30) opponent-rich pool gifts;
+ *   R2  do not pool an opponent-rich tile (4+ sections) when it can be banked/placed;
  *   R3  at most 2 opening deck dumps before the jewel is down;
  *   R4  no zero-point hand placement when a 3+ point one exists;
  *   R5  late regulation: bank erasers (black-heavy / grey solid) instead of cheap use or pool dump;
  *   R6  overtime: strike (best net overwrite/placement) instead of passing;
- *   R7  regulation: do not spend an eraser from hand for <=0 net when another hand tile does better;
- *   N1  no contact bonus: F1's contacts*2.2 + contactValue*2.1 (double-counts points, rewards clumping) removed for H3.
- *   R8  cut-point defense (late regulation / overtime): among F8's move and the best board
- *       alternatives, prefer placements whose worst single-overwrite loss is smaller.
+ *   R7  regulation: do not spend an eraser from hand for <=0 net when another hand tile does better.
  * window.HEX_H3.stats counts decisions and each correction.
  */
 (function(){
@@ -39,7 +36,7 @@
   ["normalizeAILevel","currentPlayer","aiH2Active","aiChooseH2OptionEconomyMoveResponsive","aiHighEndSearchTier","selectableAIBrainOptions","aiBrainDisplayLabelForLevel"].forEach(n=>{ if(typeof g[n]!=="function") missing.push(n); });
   if(missing.length){ console.error("[H3] engine globals missing, H3 not installed:",missing); return; }
 
-  const H3=g.HEX_H3={installed:true,label:LABEL,id:ID,version:"h3-f8-kernel-v5b",stats:{decisions:0,overrides:0,errors:0}};
+  const H3=g.HEX_H3={installed:true,label:LABEL,id:ID,version:"h3-f8-kernel-v2",stats:{decisions:0,overrides:0,errors:0}};
   const orig={}; H3.orig=orig;
   function wrap(name,factory){
     if(typeof g[name]!=="function") return false;
@@ -108,9 +105,8 @@
     if(!move || typeof move!=="object") return move;
     move.aiBrainId=ID;
     move.aiBrainQuickLabel=LABEL;
-    // Keep the kernel's decision gate: aiFinalizeChosenMoveResponsive dispatches on it, and an
-    // unknown gate makes the engine run its generic D4 "upgrade" finalizers over the move.
-    move.aiH3Version=H3.version;
+    if(typeof move.aiDecisionGate==="string" && (move.aiDecisionGate.startsWith("h2-")||move.aiDecisionGate.startsWith("f8-"))) move.aiDecisionGate="h3-"+move.aiDecisionGate.slice(3);
+    else if(!move.aiDecisionGate) move.aiDecisionGate="h3-option-economy";
     if(note){ move.aiDecisionReasons=(move.aiDecisionReasons||[]).concat([String(note)]); }
     return move;
   }
@@ -193,52 +189,6 @@
     }
     return best?{move:best,value:bv}:null;
   }
-  H3.enableR2=false;
-
-  // ---- v4: cut-point defense ----
-  // Worst-case own score loss from one overwrite = max over own-coloured,
-  // overwritable tiles of (score now - score with that tile removed).
-  function worstSingleLoss(p){
-    const base=totalScoreForPlayer(p);
-    let worst=0;
-    for(const key of Object.keys(state.board||{})){
-      if(key==="0,0") continue;
-      const entry=state.board[key]; const t=entry&&entry.tile;
-      if(!t||t.starter||!Array.isArray(t.sides)||!t.sides.includes(p)) continue;
-      delete state.board[key];
-      let after=base;
-      try{ after=totalScoreForPlayer(p); } finally { state.board[key]=entry; }
-      if(base-after>worst) worst=base-after;
-    }
-    return worst;
-  }
-  function withPlaced(m,p,fn){
-    const key=`${m.q},${m.r}`;
-    const old=state.board[key];
-    state.board[key]={tile:tileForBoardPlacement(p,m.tile,m.q,m.r)};
-    try{ return fn(); } finally { if(old) state.board[key]=old; else delete state.board[key]; }
-  }
-  H3.cutWeight=0.5; H3.cutCandidates=6;
-  function cutDefense(p,moves,move){
-    if(move.kind!=="board") return null;
-    let open=60; try{ open=openBoardCells().length; }catch(e){}
-    const deck=Array.isArray(state.deck)?state.deck.length:100;
-    const overtime=!!state.endgameOverwriteUnlocked;
-    if(!(overtime||open<=14||deck<=22)) return null;
-    const base=boardEval(move,p); if(base===null) return null;
-    const pool=[];
-    for(const m of moves){ if(m&&m.kind==="board"&&m!==move){ const v=boardEval(m,p); if(v!==null&&v>=base-3) pool.push({m,v}); } }
-    pool.sort((a,b)=>b.v-a.v);
-    const cands=[{m:move,v:base}].concat(pool.slice(0,H3.cutCandidates));
-    let best=null;
-    for(const c of cands){
-      let w; try{ w=withPlaced(c.m,p,()=>worstSingleLoss(p)); }catch(e){ return null; }
-      c.w=w; c.s=c.v-H3.cutWeight*w;
-      if(!best||c.s>best.s) best=c;
-    }
-    if(best&&best.m!==move&&best.s>=cands[0].s+2) return best.m;
-    return null;
-  }
   H3.adjust=function(p,moves,move){
     if(!move||!Array.isArray(moves)||!moves.length) return {move,rule:null};
     // R1a: a pass that ends the game while we are the sole leader is a guaranteed win.
@@ -249,7 +199,7 @@
       if(alt) return {move:alt.move,rule:"R1b-no-losing-end-pass"};
     }
     // R2: do not feed an opponent-rich tile into the public pool when it can be banked or placed usefully.
-    if(H3.enableR2&&move.kind==="pool"&&move.tile&&!move.finalDeckTile){
+    if(move.kind==="pool"&&move.tile&&!move.finalDeckTile){
       const s=scores();
       const threat=OPP(p).sort((a,b)=>s[b]-s[a]);
       const rich=threat.find(o=>colorCount(move.tile,o)>=4);
@@ -301,31 +251,18 @@
         }
       }
     }
-    // R8: cut-point defense.
-    if(move.kind==="board"){ const safer=cutDefense(p,moves,move); if(safer) return {move:safer,rule:"R8-cut-point-defense"}; }
     return {move,rule:null};
   };
   function h3Wrap(o){
     return function(player,moves){
       const r=o.apply(this,arguments);
       if(!g.aiH3Active(player)) return r;
-      const fix=(m)=>{ if(!m) return m; let out=m,rule=null; try{ const a=H3.adjust(player,moves,m); out=a.move; rule=a.rule; if(out&&out!==m&&m.aiDecisionGate&&!out.aiDecisionGate) out.aiDecisionGate=m.aiDecisionGate; }catch(e){ H3.stats.errors++; } if(rule){ H3.stats.overrides++; H3.stats[rule]=(H3.stats[rule]||0)+1; if(state.aiF8Plans) delete state.aiF8Plans[player]; } H3.stats.decisions++; return stamp(out,player,rule?("H3 correction "+rule):null); };
+      const fix=(m)=>{ if(!m) return m; let out=m,rule=null; try{ const a=H3.adjust(player,moves,m); out=a.move; rule=a.rule; }catch(e){ H3.stats.errors++; } if(rule){ H3.stats.overrides++; H3.stats[rule]=(H3.stats[rule]||0)+1; if(state.aiF8Plans) delete state.aiF8Plans[player]; } H3.stats.decisions++; return stamp(out,player,rule?("H3 correction "+rule):null); };
       return (r&&typeof r.then==="function")?r.then(fix):fix(r);
     };
   }
   wrap("aiChooseF8BoundedTriLensMoveResponsive",h3Wrap);
   wrap("aiChooseF8BoundedTriLensMove",h3Wrap);
-
-
-  // ---- v5: remove F1's scoring-contact bonus for H3 seats (anti-clumping) ----
-  H3.noContactBonus=true;
-  wrap("aiF1BoardMoveProfile",o=>function(move,player,situation){
-    const r=o.apply(this,arguments);
-    if(H3.noContactBonus&&r&&!r.invalid&&g.aiH3Active(player)){
-      r.score-=Number(r.contactValue||0)*2.1+Number(r.contacts||0)*2.2;
-    }
-    return r;
-  });
 
   /* ---------- 7. live menus (Tester) ---------- */
   // Brain/level <select>s are rebuilt by renderAll() from the wrapped
