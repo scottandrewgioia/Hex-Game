@@ -3,7 +3,7 @@
 ## Scott's standing requirement (always)
 Scott always wants Claude to be able to **edit the real game builds and save them straight to Google Drive**
 (the old workflow: update the game, put it on Drive). That needs a session running on Scott's PC
-(`C:\Hex\hex-fork-t`, Drive mounted at `G:\My Drive\hex`) controlled from his phone via **Remote Control**
+(`C:\Hex\hex-fork-t`, Drive mounted at `G:\My Drive\hex`) controlled from their phone via **Remote Control**
 (`claude remote-control` in that folder, or the Claude Desktop app).
 - If a session is a **cloud** session (no access to Scott's PC or G: drive), say so in the very first reply, in plain
   words, and tell Scott that game builds cannot be saved to Drive from it (files over ~10 MB), before starting work.
@@ -21,7 +21,7 @@ Scott always wants Claude to be able to **edit the real game builds and save the
 - Ask whether private Drive files (Tester, PC, Lab) may be temporarily link-shared for download, or whether Scott
   will provide them another way. A cloud session cannot upload files over ~10 MB back to Drive; deliver large
   builds through this repo (git) and say so up front.
-- Explain things in plain language; Scott works mostly from his phone.
+- Explain things in plain language; Scott works mostly from their phone.
 
 ## Project pointers
 - AI brain work: `ai/h3/` (H3 brain, Tester installer, README with test history).
