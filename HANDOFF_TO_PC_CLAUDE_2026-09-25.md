@@ -57,12 +57,12 @@ Remind Scott to set it back to **Restricted**.
   clump. Scott wants it removed from H3 and "probably all or at least most advanced brains". There is no old
   vertex bonus left (`vertexBonusScoreForPlayer` returns 0).
 
-## Results (headless, H3 v5b vs F8 vs F5, seats rotated, seed 8200; 27 of 30 games finished)
+## Results (headless, H3 v5b vs F8 vs F5, seats rotated, seed 8200; all 30 games finished)
 | Brain | Wins | Avg score |
 |---|---|---|
-| **H3 v5b** | **16** | **64.4** |
-| F5 | 8 | 58.9 |
-| F8 | 4 | 59.7 |
+| **H3 v5b** | **16** (+1 shared first) | **64.4** |
+| F5 | 9 | 59.0 |
+| F8 | 5 | 60.6 |
 So H3 v5b is the strongest brain measured so far. Before this, F8 was best (~44% in strong-six arenas; H2 30%).
 Run: `node ai/h3/harness/run-match.js --seats H3,F8,F5 --inject ai/h3/h3-brain.js --games 30 --workers 3 --rotate --seed 8200 --out out.jsonl`
 (needs Playwright + Chromium; games take about 10 minutes each).
