@@ -13,10 +13,7 @@
  *   R1b never end the game by passing unless sole leader (tied first = no win);
  *   R2  do not pool an opponent-rich tile (4+ sections) when it can be banked/placed;
  *   R3  at most 2 opening deck dumps before the jewel is down;
- *   R4  no zero-point hand placement when a 3+ point one exists;
- *   R5  late regulation: bank erasers (black-heavy / grey solid) instead of cheap use or pool dump;
- *   R6  overtime: strike (best net overwrite/placement) instead of passing;
- *   R7  regulation: do not spend an eraser from hand for <=0 net when another hand tile does better.
+ *   R4  no zero-point hand placement when a 3+ point one exists.
  * window.HEX_H3.stats counts decisions and each correction.
  */
 (function(){
@@ -36,7 +33,7 @@
   ["normalizeAILevel","currentPlayer","aiH2Active","aiChooseH2OptionEconomyMoveResponsive","aiHighEndSearchTier","selectableAIBrainOptions","aiBrainDisplayLabelForLevel"].forEach(n=>{ if(typeof g[n]!=="function") missing.push(n); });
   if(missing.length){ console.error("[H3] engine globals missing, H3 not installed:",missing); return; }
 
-  const H3=g.HEX_H3={installed:true,label:LABEL,id:ID,version:"h3-f8-kernel-v2",stats:{decisions:0,overrides:0,errors:0}};
+  const H3=g.HEX_H3={installed:true,label:LABEL,id:ID,version:"h3-f8-kernel-v1",stats:{decisions:0,overrides:0,errors:0}};
   const orig={}; H3.orig=orig;
   function wrap(name,factory){
     if(typeof g[name]!=="function") return false;
@@ -174,7 +171,6 @@
   function boardEval(m,p){
     try{ const v=simulateBoardMoveScore(m,p); if(!v||v.ownGain<=-999) return null; return v.ownGain - 0.55*v.oppGain + 0.45*v.oppLoss; }catch(e){ return null; }
   }
-  function isEraser(t){ if(!t||!Array.isArray(t.sides)) return false; const b=t.sides.filter(c=>c==="black").length; return b>=4||t.sides.every(c=>c==="gray"); }
   function isPass(m){ return m&&m.kind==="pass"; }
   function completesEnd(m){ return isPass(m) && m.passReason==="complete-three-pass-end"; }
   function bestAlternative(p,moves,filter){
@@ -220,35 +216,6 @@
       if(v!==null&&v<=0){
         const alt=bestAlternative(p,moves,m=>m.kind==="board"&&m.source==="hand");
         if(alt&&alt.value>=3) return {move:alt.move,rule:"R4-no-zero-hand-placement"};
-      }
-    }
-
-    // ---- v2: overtime ammunition ----
-    const overtime=!!state.endgameOverwriteUnlocked;
-    // R6: in overtime, never pass while a net-positive placement/overwrite exists.
-    if(overtime&&isPass(move)&&move.passReason!=="complete-three-pass-end"){
-      const alt=bestAlternative(p,moves,m=>m.kind==="board");
-      if(alt&&alt.value>=1) return {move:alt.move,rule:"R6-overtime-strike"};
-    }
-    if(!overtime){
-      let open=60; try{ open=openBoardCells().length; }catch(e){}
-      const deck=Array.isArray(state.deck)?state.deck.length:100;
-      const late=open<=14||deck<=22;
-      // R5: late regulation, keep erasers for overtime.
-      if(late&&move.tile&&isEraser(move.tile)&&(move.kind==="pool"||(move.kind==="board"&&move.source!=="hand"))){
-        const cheap=move.kind==="pool"||(boardEval(move,p)??0)<4;
-        if(cheap){
-          const bank=moves.find(m=>m.kind==="hand"&&m.source===move.source&&m.index===move.index);
-          if(bank) return {move:bank,rule:"R5-bank-eraser-late"};
-        }
-      }
-      // R7: do not burn a held eraser for nothing in regulation.
-      if(move.kind==="board"&&move.source==="hand"&&move.tile&&isEraser(move.tile)){
-        const v=boardEval(move,p);
-        if(v!==null&&v<=0){
-          const alt=bestAlternative(p,moves,m=>m.kind==="board"&&m.source==="hand"&&!(m.tile&&isEraser(m.tile)));
-          if(alt&&alt.value>v) return {move:alt.move,rule:"R7-keep-eraser"};
-        }
       }
     }
     return {move,rule:null};
